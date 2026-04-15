@@ -27,7 +27,10 @@ def analyze_and_store():
         else:
             print("Failed to capture from camera.")
     else:
-        print("No camera found (likely inside Mac Docker test). Falling back to static image.")
+        print(
+            "No camera found (likely inside Mac Docker test)."
+            "Falling back to static image."
+        )
         fallback_path = os.path.join(os.getcwd(), "img.png")
         if os.path.exists(fallback_path):
             img_data = cv2.imread(fallback_path)  # pylint: disable=no-member
