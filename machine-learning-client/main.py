@@ -28,7 +28,7 @@ def analyze_and_store():
             print("Failed to capture from camera.")
     else:
         print(
-            "No camera found (likely inside Mac Docker test)."
+            "No camera found (likely inside Mac Docker test). "
             "Falling back to static image."
         )
         fallback_path = os.path.join(os.getcwd(), "img.png")
