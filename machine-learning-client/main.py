@@ -51,7 +51,7 @@ def analyze_and_store():
                 "source": "webcam",
                 "emotion": emotion,
                 "score": score,
-                "status": "completed"
+                "status": "completed",
             }
             save_record(record)
             print("Metadata saved to MongoDB successfully.")
@@ -59,6 +59,7 @@ def analyze_and_store():
             print("No face detected. Skipping database insert.")
     else:
         print("No valid image data to process.")
+
 
 if __name__ == "__main__":
     analyze_and_store()
