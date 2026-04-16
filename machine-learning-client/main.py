@@ -101,4 +101,3 @@ def analyze_and_store():
 
 if __name__ == "__main__":
     analyze_and_store()
-
