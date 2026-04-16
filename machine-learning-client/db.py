@@ -19,3 +19,4 @@ def save_record(record):
     """Insert one study tracking analysis record into MongoDB."""
     collection = get_collection()
     collection.insert_one(record)
+
