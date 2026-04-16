@@ -4,9 +4,9 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pymongo = "*"
 pylint = "*"
 black = "*"
+pymongo = {extras = ["srv"], version = "*"}
 
 [dev-packages]
 

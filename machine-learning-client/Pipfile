@@ -8,7 +8,7 @@ pylint = "*"
 black = "*"
 fer = "*"
 setuptools = "*"
-pymongo = "*"
+pymongo = {extras = ["srv"], version = "*"}
 
 [dev-packages]
 pytest = "*"
