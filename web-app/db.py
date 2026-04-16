@@ -15,7 +15,7 @@ def get_collection():
     return database[COLLECTION_NAME]
 
 
-def save_record(record):
-    """Insert one analysis record into MongoDB."""
+def get_recent_records(limit=10):
+    """Return the most recent records from MongoDB."""
     collection = get_collection()
-    collection.insert_one(record)
+    return list(collection.find().sort("timestamp", -1).limit(limit))
