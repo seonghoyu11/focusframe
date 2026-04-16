@@ -11,6 +11,8 @@ python-dotenv = "*"
 werkzeug = "*"
 
 [dev-packages]
+pylint = "*"
+black = "*"
 
 [requires]
 python_version = "3.10"
