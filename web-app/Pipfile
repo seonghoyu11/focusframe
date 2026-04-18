@@ -13,6 +13,10 @@ werkzeug = "*"
 [dev-packages]
 pylint = "*"
 black = "*"
+pytest = "*"
+pytest-flask = "*"
+pytest-cov = "*"
+mongomock = "*"
 
 [requires]
 python_version = "3.10"

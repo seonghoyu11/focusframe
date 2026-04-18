@@ -3,19 +3,28 @@
 import os
 from pymongo import MongoClient  # pylint: disable=import-error
 
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongodb:27017/appdb")
-DB_NAME = "appdb"
-COLLECTION_NAME = "ml_records"
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongodb:27017/focusframe")
+DB_NAME = "focusframe"
+
+# Collection Names
+USERS_COLLECTION = "users"
+SESSIONS_COLLECTION = "sessions"
+SNAPSHOTS_COLLECTION = "snapshots"
 
 
-def get_collection():
-    """Return the MongoDB collection used by the web app."""
+def get_collection(name):
+    """Return a specific MongoDB collection."""
     client = MongoClient(MONGO_URI)
     database = client[DB_NAME]
-    return database[COLLECTION_NAME]
+    return database[name]
 
 
-def save_record(record):
-    """Insert one analysis record into MongoDB."""
-    collection = get_collection()
-    collection.insert_one(record)
+def get_users_collection():
+    """Return the users collection."""
+    return get_collection(USERS_COLLECTION)
+
+
+def save_snapshot(snapshot_data):
+    """Insert one analysis snapshot into the snapshots collection."""
+    collection = get_collection(SNAPSHOTS_COLLECTION)
+    return collection.insert_one(snapshot_data)

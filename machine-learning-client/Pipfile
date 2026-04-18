@@ -12,6 +12,8 @@ pymongo = "*"
 pytest = "*"
 pylint = "*"
 black = "*"
+pytest-cov = "*"
+mongomock = "*"
 
 [requires]
 python_version = "3.10"

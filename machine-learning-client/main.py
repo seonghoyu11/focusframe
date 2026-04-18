@@ -8,9 +8,8 @@ import cv2  # pylint: disable=import-error
 from db import save_record
 
 
-def analyze_and_store():
-    """Captures an image, analyzes it for emotion, and saves it utilizing db.py."""
-    print(f"[{datetime.datetime.now()}] Waking up to process data...")
+def get_face_emotion():
+    """Gets face emotion."""
     detector = FER(mtcnn=False)
 
     cap = cv2.VideoCapture(0)  # pylint: disable=no-member
@@ -18,48 +17,37 @@ def analyze_and_store():
     img_data = None
 
     if cap.isOpened():
-        print("Camera detected. Taking photo...")
         time.sleep(3)
         ret, frame = cap.read()
         cap.release()
 
         if ret:
             img_data = frame
-        else:
-            print("Failed to capture from camera.")
     else:
-        print(
-            "No camera found (likely inside Mac Docker test). "
-            "Falling back to static image."
-        )
+        # when there is an error, use a fallback image
         fallback_path = os.path.join(os.getcwd(), "img.png")
         if os.path.exists(fallback_path):
             img_data = cv2.imread(fallback_path)  # pylint: disable=no-member
-        else:
-            print("Fallback image 'img.png' not found either.")
 
     if img_data is not None:
         detector.detect_emotions(img_data)
         result = detector.top_emotion(img_data)
-
-        if result:
-            emotion, score = result
-            print(f"Detected: {emotion} (Score: {score})")
-
-            record = {
-                "timestamp": datetime.datetime.now(datetime.timezone.utc),
-                "source": "webcam",
-                "emotion": emotion,
-                "score": score,
-                "status": "completed",
-            }
-            save_record(record)
-            print("Metadata saved to MongoDB successfully.")
-        else:
-            print("No face detected. Skipping database insert.")
+        return result
     else:
-        print("No valid image data to process.")
+        return None
 
+def distraction_classification(data):
+    """Classifies distraction based on emotion data."""
+    if data is None:
+        return "absent"
+    emotion, score = data
+    if emotion in ["happy", "neutral", "angry"]:
+        return "focused"
+    elif emotion in ["sad", "fear", "disgust", "surprise"]:
+        return "distracted"
+    else:
+        return "unknown"
 
-if __name__ == "__main__":
-    analyze_and_store()
+def store_data(emotion, score, classification):
+    """Stores data in MongoDB."""
+    

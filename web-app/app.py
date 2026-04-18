@@ -3,6 +3,7 @@
 import datetime  # pylint: disable=import-error
 import os  # pylint: disable=import-error
 import pymongo  # pylint: disable=import-error
+from db import get_collection, USERS_COLLECTION, SESSIONS_COLLECTION, SNAPSHOTS_COLLECTION
 
 from dotenv import load_dotenv
 from bson.objectid import ObjectId  # pylint: disable=import-error
@@ -46,14 +47,10 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
-# connect to MongoDB
-client = pymongo.MongoClient(os.getenv("MONGO_URI"))
-db = client[os.getenv("MONGO_DBNAME", "titan_terminals")]
-
-users_col = db["users"]
-datetimes_col = db["datetimes"]
-quotes_col = db["quotes"]
-movies_col = db["movies"]
+# connect to MongoDB using db helper
+users_col = get_collection(USERS_COLLECTION)
+sessions_col = get_collection(SESSIONS_COLLECTION)
+snapshots_col = get_collection(SNAPSHOTS_COLLECTION)
 
 # flask-login set up
 login_manager = LoginManager()
@@ -94,6 +91,18 @@ def load_user(user_id):
     except Exception:  # pylint: disable=broad-exception-caught
         return None
     return User(doc) if doc else None
+
+
+@app.before_request
+def check_auth():
+    """
+    Global authentication check. Redirects unauthenticated users to the
+    login page for all routes except those in the public_endpoints list.
+    """
+    public_endpoints = ["index", "login", "signup", "static"]
+    if not current_user.is_authenticated and request.endpoint not in public_endpoints:
+        return redirect(url_for("login"))
+    return None
 
 
 @app.route("/")
