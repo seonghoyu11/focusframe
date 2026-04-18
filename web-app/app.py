@@ -98,6 +98,7 @@ def load_user(user_id):
 
 @app.route("/")
 def index():
+    return render_template("templates/index.html")
     """
     Route for the index page
     Returns:

@@ -4,8 +4,57 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Homepage</title>
+    <meta http-equiv="refresh" content="1">
 </head>
 <body>
-    <h1>Welcome to the Homepage</h1>
+    <h1>FocusFrame Dashboard</h1>
+    {% if active_session %}
+        {% if alert_message %}
+            <div class="alert">
+                {{alert_message}}
+            </div>
+        {% endif %}
+        <div class="card">
+            <h1>{{mode}} Phase</h1>
+            <p>{{time_left}}</p>
+        </div>
+        <div class="card">
+            <h1>Live Stats</h1>
+            <p>Focused:{{focused_time}}</p>
+            <p>Distracted:{{distracted_time}}</p>
+            <p>Absent: {{absent_time}}</p>
+        </div>
+        <div class="progress-bar">
+              <div class="progress-fill" style="width: {{ progress }}%;"></div>
+        </div>
+        <p>{{progress}}% complete</p>
+        <form action="/session/stop" method="post">
+            <button type="submit">Stop Session</button>
+        </form>
+    {% else %}
+        <p>Welcome back, {{ username }}</p>
+        <form action="/session/start" method="post">
+            <button type="submit">Start Study Session</button>
+        </form>
+        <div class="card">
+            <h1>Study Stats</h1>
+            <p>
+                <a href="/dashboard?range=day">Day</a>
+                <a href="/dashboard?range=week">Week</a>
+                <a href="/dashboard?range=month">Month</a>
+                <a href="/dashboard?range=year">Year</a>
+            </p>
+            <img src="data:image/png;base64,{{ chart }}" alt="Study chart">
+            <p>Focused: {{ focused_total }}</p>
+            <p>Distracted: {{ distracted_total }}</p>
+            <p>Focus Rate: {{ focus_rate }}%</p>
+        </div>
+        <div class="card">
+            <h1>Recent Sessions</h1>
+                {% for session in recent_sessions %}
+            <p>{{ session.date }} | {{ session.focus_rate }}%</p>
+                {% endfor %}
+        </div>
+    {% endif %}
 </body>
 </html>
