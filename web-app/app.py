@@ -388,7 +388,9 @@ def history():  # pylint: disable=too-many-locals
             "id": str(sess_id),
             "date": sess["start_time"].strftime("%Y-%m-%d"),
             "start_time": sess["start_time"].strftime("%H:%M"),
-            "end_time": sess["end_time"].strftime("%H:%M") if sess.get("end_time") else "—",
+            "end_time": (
+                sess["end_time"].strftime("%H:%M") if sess.get("end_time") else "—"
+            ),
             "duration": duration,
             "focused_percent": rate,
             "distracted_percent": distract_rate,
@@ -416,10 +418,16 @@ def session_detail(session_id):
         return redirect(url_for("history"))
 
     # stats calculation
-    fc = snapshots_col.count_documents({"session_id": sess["_id"], "classification": "focused"})
-    dc = snapshots_col.count_documents({"session_id": sess["_id"], "classification": "distracted"})
-    ac = snapshots_col.count_documents({"session_id": sess["_id"], "classification": "absent"})
-    
+    fc = snapshots_col.count_documents(
+        {"session_id": sess["_id"], "classification": "focused"}
+    )
+    dc = snapshots_col.count_documents(
+        {"session_id": sess["_id"], "classification": "distracted"}
+    )
+    ac = snapshots_col.count_documents(
+        {"session_id": sess["_id"], "classification": "absent"}
+    )
+
     tt = (fc + dc + ac) * 10
     ft = fc * 10
     dt = dc * 10
@@ -439,21 +447,28 @@ def session_detail(session_id):
 
     # Fetch snapshots with base64 images
     import base64  # pylint: disable=import-outside-toplevel
-    raw_snaps = list(snapshots_col.find({"session_id": sess["_id"]}).sort("timestamp", 1))
+
+    raw_snaps = list(
+        snapshots_col.find({"session_id": sess["_id"]}).sort("timestamp", 1)
+    )
     snapshots = []
     for snap in raw_snaps:
         img_b64 = None
         if snap.get("image"):
             img_b64 = base64.b64encode(snap["image"]).decode("utf-8")
-        snapshots.append({
-            "timestamp": snap["timestamp"].strftime("%H:%M:%S"),
-            "emotion": snap.get("emotion", "unknown"),
-            "confidence": snap.get("confidence", 0),
-            "classification": snap.get("classification", "unknown"),
-            "image_b64": img_b64,
-        })
+        snapshots.append(
+            {
+                "timestamp": snap["timestamp"].strftime("%H:%M:%S"),
+                "emotion": snap.get("emotion", "unknown"),
+                "confidence": snap.get("confidence", 0),
+                "classification": snap.get("classification", "unknown"),
+                "image_b64": img_b64,
+            }
+        )
 
-    return render_template("session_detail.html", session=sess, stats=stats, snapshots=snapshots)
+    return render_template(
+        "session_detail.html", session=sess, stats=stats, snapshots=snapshots
+    )
 
 
 if __name__ == "__main__":
