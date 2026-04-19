@@ -18,7 +18,7 @@ from flask_login import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import (
-    get_collection,
+    get_database,
     USERS_COLLECTION,
     SESSIONS_COLLECTION,
     SNAPSHOTS_COLLECTION,
@@ -54,9 +54,11 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 # connect to MongoDB using db helper
-users_col = get_collection(USERS_COLLECTION)
-sessions_col = get_collection(SESSIONS_COLLECTION)
-snapshots_col = get_collection(SNAPSHOTS_COLLECTION)
+db = get_database()
+
+users_col = db[USERS_COLLECTION]
+sessions_col = db[SESSIONS_COLLECTION]
+snapshots_col = db[SNAPSHOTS_COLLECTION]
 
 # flask-login set up
 login_manager = LoginManager()
