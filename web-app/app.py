@@ -115,7 +115,6 @@ def check_auth():
 
 @app.route("/")
 def index():
-    return render_template("templates/index.html")
     """
     Route for the index page
     Returns:
@@ -123,7 +122,7 @@ def index():
     """
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
-    return render_template("index.html")
+    return render_template("templates/index.html")
 
 
 @app.route("/dashboard")
@@ -144,25 +143,25 @@ def dashboard():
 
     # Calculate stats for all fetched sessions
     def calculate_stats(session_id):
-        fc = snapshots_col.count_documents(
+        Fc = snapshots_col.count_documents(
             {"session_id": session_id, "classification": "focused"}
         )
-        dc = snapshots_col.count_documents(
+        Dc = snapshots_col.count_documents(
             {"session_id": session_id, "classification": "distracted"}
         )
-        ac = snapshots_col.count_documents(
+        Ac = snapshots_col.count_documents(
             {"session_id": session_id, "classification": "absent"}
         )
-        tt = (fc + dc + ac) * 10
-        ft = fc * 10
-        dt = dc * 10
-        at = ac * 10
-        rate = (ft / tt * 100) if tt > 0 else 0
+        Tt = (Fc + Dc + Ac) * 10
+        Ft = Fc * 10
+        Dt = Dc * 10
+        At = Ac * 10
+        rate = (Ft / Tt * 100) if Tt > 0 else 0
         return {
-            "focused_time": ft,
-            "distracted_time": dt,
-            "absent_time": at,
-            "total_time": tt,
+            "focused_time": Ft,
+            "distracted_time": Dt,
+            "absent_time": At,
+            "total_time": Tt,
             "focus_rate": rate,
         }
 
@@ -355,20 +354,20 @@ def history():  # pylint: disable=too-many-locals
     sessions_list = []
     for sess in past_sessions_cursor:
         sess_id = sess["_id"]
-        fc = snapshots_col.count_documents(
+        Fc = snapshots_col.count_documents(
             {"session_id": sess_id, "classification": "focused"}
         )
-        dc = snapshots_col.count_documents(
+        Dc = snapshots_col.count_documents(
             {"session_id": sess_id, "classification": "distracted"}
         )
-        ac = snapshots_col.count_documents(
+        Ac = snapshots_col.count_documents(
             {"session_id": sess_id, "classification": "absent"}
         )
-        tt = (fc + dc + ac) * 10
-        ft = fc * 10
-        dt = dc * 10
-        rate = (ft / tt * 100) if tt > 0 else 0
-        distract_rate = (dt / tt * 100) if tt > 0 else 0
+        Tt = (Fc + Dc + Ac) * 10
+        Ft = Fc * 10
+        Dt = Dc * 10
+        rate = (Ft / Tt * 100) if Tt > 0 else 0
+        distract_rate = (Dt / Tt * 100) if Tt > 0 else 0
 
         duration = 0
         if sess.get("end_time"):
