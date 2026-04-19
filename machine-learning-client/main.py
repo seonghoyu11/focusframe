@@ -59,7 +59,7 @@ def store_data(img_frame, emotion, score, classification):
     """
     # 1. Find the active session
     sessions_col = get_collection(SESSIONS_COLLECTION)
-    active_session = sessions_col.find_one({"is_active": True})
+    active_session = sessions_col.find_one({"status": "active"})
 
     if not active_session:
         print("No active focus session found. Skipping storage.")
@@ -83,8 +83,13 @@ def store_data(img_frame, emotion, score, classification):
         "image": image_bytes,
     }
 
-    # 4. Save to DB
+    # save to DB
     save_snapshot(snapshot)
+    # increment snapshot_count on the session
+    sessions_col.update_one(
+        {"_id": active_session["_id"]},
+        {"$inc": {"snapshot_count": 1}},
+    )
     print(f"Snapshot stored successfully for session {active_session['_id']}")
 
 

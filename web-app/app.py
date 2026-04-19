@@ -130,10 +130,10 @@ def dashboard():
     Dashboard for displaying session stats and controls.
     """
     user_id = current_user.get_id()
-    active_session = sessions_col.find_one({"user_id": user_id, "is_active": True})
+    active_session = sessions_col.find_one({"user_id": user_id, "status": "active"})
     # Fetch up to 2 past sessions
     past_sessions_cursor = (
-        sessions_col.find({"user_id": user_id, "is_active": False})
+        sessions_col.find({"user_id": user_id, "status": "completed"})
         .sort("start_time", -1)
         .limit(2)
     )
@@ -168,20 +168,27 @@ def dashboard():
     if active_session:
         stats = calculate_stats(active_session["_id"])
         pom_start = active_session.get(
-            "pomodoro_start_time", active_session["start_time"]
+            "pomodoro_phase_start", active_session["start_time"]
         )
+        cycle = active_session.get("pomodoro_cycle", 1)
         delta = datetime.datetime.utcnow() - pom_start
-        tot_sec = delta.total_seconds()
-        cycle_sec = tot_sec % (30 * 60)
-        if cycle_sec < (25 * 60):
-            phase = "FOCUS"
-            rem = (25 * 60) - cycle_sec
+        elapsed = delta.total_seconds()
+        current_phase = active_session.get("pomodoro_phase", "work")
+        if current_phase == "work":
+            rem = max(0, (25 * 60) - elapsed)
+            if rem == 0:
+                current_phase = "break"
+                rem = 25 * 60
         else:
-            phase = "BREAK"
-            rem = (30 * 60) - cycle_sec
+            rem = max(0, (5 * 60) - elapsed)
+            if rem == 0:
+                current_phase = "work"
+                cycle += 1
+                rem = 25 * 60
         pomodoro = {
-            "phase": phase,
+            "phase": current_phase.upper(),
             "timer": f"{int(rem // 60):02d}:{int(rem % 60):02d}",
+            "cycle": cycle,
         }
     elif past_sessions:
         stats = calculate_stats(past_sessions[0]["_id"])
@@ -201,17 +208,26 @@ def dashboard():
 def start_session():
     """Starts a new focus session."""
     existing = sessions_col.find_one(
-        {"user_id": current_user.get_id(), "is_active": True}
+        {"user_id": current_user.get_id(), "status": "active"}
     )
     if existing:
         flash("A session is already active.", "error")
         return redirect(url_for("dashboard"))
 
+    now = datetime.datetime.utcnow()
     new_session = {
         "user_id": current_user.get_id(),
-        "start_time": datetime.datetime.utcnow(),
-        "pomodoro_start_time": datetime.datetime.utcnow(),
-        "is_active": True,
+        "status": "active",
+        "start_time": now,
+        "end_time": None,
+        "pomodoro_phase": "work",
+        "pomodoro_phase_start": now,
+        "pomodoro_cycle": 1,
+        "total_focused_seconds": 0,
+        "total_distracted_seconds": 0,
+        "total_absent_seconds": 0,
+        "snapshot_count": 0,
+        "notification": None,
     }
     sessions_col.insert_one(new_session)
     flash("Study session started!", "success")
@@ -223,8 +239,8 @@ def start_session():
 def stop_session():
     """Stops the current focus session."""
     sessions_col.update_one(
-        {"user_id": current_user.get_id(), "is_active": True},
-        {"$set": {"is_active": False, "end_time": datetime.datetime.utcnow()}},
+        {"user_id": current_user.get_id(), "status": "active"},
+        {"$set": {"status": "completed", "end_time": datetime.datetime.utcnow()}},
     )
     flash("Study session stopped.", "info")
     return redirect(url_for("dashboard"))
@@ -336,7 +352,7 @@ def history():  # pylint: disable=too-many-locals
     """
     user_id = current_user.get_id()
     past_sessions_cursor = sessions_col.find(
-        {"user_id": user_id, "is_active": False}
+        {"user_id": user_id, "status": "completed"}
     ).sort("start_time", -1)
 
     sessions_list = []
