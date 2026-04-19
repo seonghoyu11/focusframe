@@ -51,7 +51,7 @@ except (ImportError, AttributeError):
 # load .env
 load_dotenv()
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 # connect to MongoDB using db helper
 db = get_database()
@@ -516,4 +516,4 @@ def session_detail(session_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)

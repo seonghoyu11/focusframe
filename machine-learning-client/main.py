@@ -63,7 +63,7 @@ def store_data(img_frame, emotion, score, classification):
         return
 
     # 2. Encode image to JPG binary
-    success, buffer = cv2.imencode(".jpg", img_frame)
+    success, buffer = cv2.imencode(".jpg", img_frame)  # pylint: disable=no-member
     if not success:
         print("Failed to encode image. Skipping storage.")
         return
@@ -103,5 +103,5 @@ if __name__ == "__main__":
             print("No face detected or capture failed.")
 
         # capture frequency from .env
-        interval = int(os.getenv("CAPTURE_INTERVAL", "10"))
+        interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "30"))
         time.sleep(interval)

@@ -1,7 +1,6 @@
 """MongoDB helper functions for the FocusFrame ML client."""
 
 import os
-import datetime
 from pymongo import MongoClient  # pylint: disable=import-error
 
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongodb:27017/focusframe")
