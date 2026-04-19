@@ -1,10 +1,12 @@
 """MongoDB helper functions for the FocusFrame ML client."""
 
+import datetime
 import os
+
 from pymongo import MongoClient  # pylint: disable=import-error
 
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongodb:27017/focusframe")
-DB_NAME = "focusframe"
+DB_NAME = os.environ.get("MONGO_DBNAME", "focusframe")
 
 # Collection Names
 USERS_COLLECTION = "users"
@@ -25,15 +27,13 @@ def save_snapshot(snapshot_data):
     return collection.insert_one(snapshot_data)
 
 
-# Maintain backward compatibility with name 'save_record' if needed
 def save_record(record):
-    """Alias for save_snapshot."""
+    """Alias for save_snapshot (backward compatibility)."""
     return save_snapshot(record)
 
 
 def set_session_notification(session_id, classification):
-    import datetime
-
+    """Set the notification field on a session document."""
     messages = {
         "distracted": "You seem distracted! Get back to studying.",
         "absent": "We lost sight of you — come back to finish your session.",
