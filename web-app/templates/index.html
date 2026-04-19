@@ -24,7 +24,7 @@
             <p>Absent: {{absent_time}}</p>
         </div>
         <div class="progress-bar">
-              <div class="progress-fill" style="width: {{ progress }}%;"></div>
+              <div class="progress-fill" style="width: {{progress}}%;"></div>
         </div>
         <p>{{progress}}% complete</p>
         <form action="/session/stop" method="post">
@@ -43,7 +43,11 @@
                 <a href="/dashboard?range=month">Month</a>
                 <a href="/dashboard?range=year">Year</a>
             </p>
-            <img src="data:image/png;base64,{{ chart }}" alt="Study chart">
+            {% if chart %}
+                <img src="data:image/png;base64,{{ chart }}" alt="Study chart">
+            {% else %}
+                <p>No session data yet — start your first session to see charts.</p>
+            {% endif %}
             <p>Focused: {{ focused_total }}</p>
             <p>Distracted: {{ distracted_total }}</p>
             <p>Focus Rate: {{ focus_rate }}%</p>

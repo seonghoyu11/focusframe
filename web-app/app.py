@@ -3,6 +3,7 @@
 import datetime  # pylint: disable=import-error
 import os  # pylint: disable=import-error
 from collections import Counter
+from charts import generate_focus_chart
 
 from dotenv import load_dotenv
 from bson.objectid import ObjectId  # pylint: disable=import-error
@@ -223,6 +224,14 @@ def dashboard():
     else:
         mode = None
         time_left = None
+    
+    chart_totals = {
+        "focused": focused_time if active_session else focused_total,
+        "distracted": distracted_time if active_session else distracted_total,
+        "absent": absent_time if active_session else 0,
+    }
+    chart_b64 = generate_focus_chart(chart_totals)
+
     return render_template(
         "index.html",
         active_session=active_session,
@@ -238,6 +247,7 @@ def dashboard():
         focused_total=focused_total,
         distracted_total=distracted_total,
         progress=0,
+        chart=chart_b64,
     )
 
 
