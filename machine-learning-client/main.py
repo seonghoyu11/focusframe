@@ -103,5 +103,5 @@ if __name__ == "__main__":
             print("No face detected or capture failed.")
 
         # capture frequency from .env
-        interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "30"))
+        interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
         time.sleep(interval)
