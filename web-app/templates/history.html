@@ -3,7 +3,45 @@
 {% block title %}History - Terminal Titans{% endblock %}
 
 {% block content %}
-<div class="auth-card">
-    <h2 class="auth-title">History</h2>
+<div class="auth-card dashboard-card history-container">
+    <h2 class="auth-title">Session History</h2>
+    <p class="auth-subtitle">Review your past study sequences.</p>
+
+    {% if sessions %}
+    <div class="history-table-wrapper">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Duration</th>
+                    <th>Focused %</th>
+                    <th>Distracted %</th>
+                    <th>Dominant Emotion</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sess in sessions %}
+                <tr>
+                    <td>{{ sess.date }}</td>
+                    <td>{{ sess.duration }} mins</td>
+                    <td class="text-success-bold">{{ "%.1f"|format(sess.focused_percent) }}%</td>
+                    <td class="text-error">{{ "%.1f"|format(sess.distracted_percent) }}%</td>
+                    <td class="text-capitalize">{{ sess.dominant_emotion }}</td>
+                    <td>
+                        <a href="{{ url_for('session_archive', session_id=sess.id) }}" class="btn-outline btn-sm">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="status-panel inactive mt-3">
+        <h3 class="text-muted">No completed sessions yet.</h3>
+        <p class="text-muted mt-1">Visit your dashboard to start your first focus session!</p>
+        <a href="{{ url_for('dashboard') }}" class="btn-primary mt-1 btn-auto-width">Go to Dashboard</a>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

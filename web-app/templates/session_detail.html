@@ -13,13 +13,19 @@
 
     {% if active_session %}
     <div class="status-panel active">
-        <span class="badge badge-success">
-            🟢 Session Active
+        <span class="badge badge-success mb-1 d-inline-block">
+            Session Active
         </span>
+        <div class="pomodoro-timer {% if pomodoro.phase == 'FOCUS' %}pomodoro-focus{% else %}pomodoro-break{% endif %}">
+            {{ pomodoro.timer }}
+        </div>
+        <div class="pomodoro-phase">
+            Phase: {{ pomodoro.phase }}
+        </div>
         <p class="text-muted mt-1">
             Started at: {{ active_session.start_time.strftime('%Y-%m-%d %H:%M:%S') }} UTC
         </p>
-        
+
         <div class="stats-grid">
             <div>
                 <h3>{{ stats.focused_time if stats else 0 }}s</h3>

@@ -2,8 +2,7 @@
 
 import datetime  # pylint: disable=import-error
 import os  # pylint: disable=import-error
-import pymongo  # pylint: disable=import-error
-from db import get_collection, USERS_COLLECTION, SESSIONS_COLLECTION, SNAPSHOTS_COLLECTION
+from collections import Counter
 
 from dotenv import load_dotenv
 from bson.objectid import ObjectId  # pylint: disable=import-error
@@ -17,6 +16,13 @@ from flask_login import (
     logout_user,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
+
+from db import (
+    get_collection,
+    USERS_COLLECTION,
+    SESSIONS_COLLECTION,
+    SNAPSHOTS_COLLECTION,
+)
 
 try:
     from zoneinfo import ZoneInfo
@@ -116,6 +122,7 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("index.html")
 
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -124,39 +131,78 @@ def dashboard():
     """
     user_id = current_user.get_id()
     active_session = sessions_col.find_one({"user_id": user_id, "is_active": True})
-    
     # Fetch up to 2 past sessions
-    past_sessions_cursor = sessions_col.find({"user_id": user_id, "is_active": False}).sort("start_time", -1).limit(2)
+    past_sessions_cursor = (
+        sessions_col.find({"user_id": user_id, "is_active": False})
+        .sort("start_time", -1)
+        .limit(2)
+    )
     past_sessions = list(past_sessions_cursor)
-    
+
     # Calculate stats for all fetched sessions
     def calculate_stats(session_id):
-        fc = snapshots_col.count_documents({"session_id": session_id, "classification": "focused"})
-        dc = snapshots_col.count_documents({"session_id": session_id, "classification": "distracted"})
-        ac = snapshots_col.count_documents({"session_id": session_id, "classification": "absent"})
+        fc = snapshots_col.count_documents(
+            {"session_id": session_id, "classification": "focused"}
+        )
+        dc = snapshots_col.count_documents(
+            {"session_id": session_id, "classification": "distracted"}
+        )
+        ac = snapshots_col.count_documents(
+            {"session_id": session_id, "classification": "absent"}
+        )
         tt = (fc + dc + ac) * 10
         ft = fc * 10
         dt = dc * 10
         at = ac * 10
         rate = (ft / tt * 100) if tt > 0 else 0
-        return {"focused_time": ft, "distracted_time": dt, "absent_time": at, "total_time": tt, "focus_rate": rate}
+        return {
+            "focused_time": ft,
+            "distracted_time": dt,
+            "absent_time": at,
+            "total_time": tt,
+            "focus_rate": rate,
+        }
 
+    pomodoro = None
     stats = None
     if active_session:
         stats = calculate_stats(active_session["_id"])
+        pom_start = active_session.get(
+            "pomodoro_start_time", active_session["start_time"]
+        )
+        delta = datetime.datetime.utcnow() - pom_start
+        tot_sec = delta.total_seconds()
+        cycle_sec = tot_sec % (30 * 60)
+        if cycle_sec < (25 * 60):
+            phase = "FOCUS"
+            rem = (25 * 60) - cycle_sec
+        else:
+            phase = "BREAK"
+            rem = (30 * 60) - cycle_sec
+        pomodoro = {
+            "phase": phase,
+            "timer": f"{int(rem // 60):02d}:{int(rem % 60):02d}",
+        }
     elif past_sessions:
         stats = calculate_stats(past_sessions[0]["_id"])
-        
     for ps in past_sessions:
         ps["stats"] = calculate_stats(ps["_id"])
+    return render_template(
+        "session_detail.html",
+        active_session=active_session,
+        stats=stats,
+        past_sessions=past_sessions,
+        pomodoro=pomodoro,
+    )
 
-    return render_template("session_detail.html", active_session=active_session, stats=stats, past_sessions=past_sessions)
 
 @app.route("/session/start", methods=["POST"])
 @login_required
 def start_session():
     """Starts a new focus session."""
-    existing = sessions_col.find_one({"user_id": current_user.get_id(), "is_active": True})
+    existing = sessions_col.find_one(
+        {"user_id": current_user.get_id(), "is_active": True}
+    )
     if existing:
         flash("A session is already active.", "error")
         return redirect(url_for("dashboard"))
@@ -164,11 +210,13 @@ def start_session():
     new_session = {
         "user_id": current_user.get_id(),
         "start_time": datetime.datetime.utcnow(),
-        "is_active": True
+        "pomodoro_start_time": datetime.datetime.utcnow(),
+        "is_active": True,
     }
     sessions_col.insert_one(new_session)
     flash("Study session started!", "success")
     return redirect(url_for("dashboard"))
+
 
 @app.route("/session/stop", methods=["POST"])
 @login_required
@@ -176,7 +224,7 @@ def stop_session():
     """Stops the current focus session."""
     sessions_col.update_one(
         {"user_id": current_user.get_id(), "is_active": True},
-        {"$set": {"is_active": False, "end_time": datetime.datetime.utcnow()}}
+        {"$set": {"is_active": False, "end_time": datetime.datetime.utcnow()}},
     )
     flash("Study session stopped.", "info")
     return redirect(url_for("dashboard"))
@@ -282,11 +330,97 @@ def logout():
 
 @app.route("/history")
 @login_required
-def history():
+def history():  # pylint: disable=too-many-locals
     """
-    Placeholder route for history.
+    Shows a table of all past sessions.
     """
-    return render_template("history.html")
+    user_id = current_user.get_id()
+    past_sessions_cursor = sessions_col.find(
+        {"user_id": user_id, "is_active": False}
+    ).sort("start_time", -1)
+
+    sessions_list = []
+    for sess in past_sessions_cursor:
+        sess_id = sess["_id"]
+        fc = snapshots_col.count_documents(
+            {"session_id": sess_id, "classification": "focused"}
+        )
+        dc = snapshots_col.count_documents(
+            {"session_id": sess_id, "classification": "distracted"}
+        )
+        ac = snapshots_col.count_documents(
+            {"session_id": sess_id, "classification": "absent"}
+        )
+        tt = (fc + dc + ac) * 10
+        ft = fc * 10
+        dt = dc * 10
+        rate = (ft / tt * 100) if tt > 0 else 0
+        distract_rate = (dt / tt * 100) if tt > 0 else 0
+
+        duration = 0
+        if sess.get("end_time"):
+            duration = int((sess["end_time"] - sess["start_time"]).total_seconds() / 60)
+
+        emotions = [
+            str(x.get("emotion", "None"))
+            for x in snapshots_col.find({"session_id": sess_id}, {"emotion": 1})
+        ]
+        dom_emotion = "None"
+        if emotions:
+            dom_emotion = Counter(emotions).most_common(1)[0][0]
+
+        sess_data = {
+            "id": str(sess_id),
+            "date": sess["start_time"].strftime("%Y-%m-%d %H:%M"),
+            "duration": duration,
+            "focused_percent": rate,
+            "distracted_percent": distract_rate,
+            "dominant_emotion": dom_emotion,
+        }
+        sessions_list.append(sess_data)
+    return render_template("history.html", sessions=sessions_list)
+
+
+@app.route("/session/<session_id>")
+@login_required
+def session_archive(session_id):
+    """
+    Shows detailed stats of a specific past session.
+    """
+    try:
+        sess = sessions_col.find_one(
+            {"_id": ObjectId(session_id), "user_id": current_user.get_id()}
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        sess = None
+
+    if not sess:
+        flash("Session not found.", "error")
+        return redirect(url_for("history"))
+    fc = snapshots_col.count_documents(
+        {"session_id": sess["_id"], "classification": "focused"}
+    )
+    dc = snapshots_col.count_documents(
+        {"session_id": sess["_id"], "classification": "distracted"}
+    )
+    ac = snapshots_col.count_documents(
+        {"session_id": sess["_id"], "classification": "absent"}
+    )
+    tt = (fc + dc + ac) * 10
+    ft = fc * 10
+    dt = dc * 10
+    at = ac * 10
+    rate = (ft / tt * 100) if tt > 0 else 0
+
+    stats = {
+        "focused_time": ft,
+        "distracted_time": dt,
+        "absent_time": at,
+        "total_time": tt,
+        "focus_rate": rate,
+    }
+    return render_template("archive.html", session=sess, stats=stats)
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

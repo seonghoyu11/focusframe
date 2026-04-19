@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Session Record - Terminal Titans{% endblock %}
+
+{% block content %}
+<div class="auth-card dashboard-card">
+    <div class="archive-header">
+        <h2 class="auth-title archive-title">Session Archive</h2>
+        <a href="{{ url_for('history') }}" class="btn-outline btn-link-back">← Back to History</a>
+    </div>
+
+    <div class="history-item block-display">
+        <strong>Date Logged:</strong> {{ session.start_time.strftime('%Y-%m-%d %H:%M') }}<br>
+        <strong>Completion Date:</strong> {{ session.end_time.strftime('%Y-%m-%d %H:%M') }}
+    </div>
+
+    <h3 class="mt-3">Performance Data</h3>
+    <div class="stats-grid boxed">
+        <div>
+            <h3>{{ stats.focused_time }}s</h3>
+            <p class="stat-label">Focused Time</p>
+        </div>
+        <div>
+            <h3>{{ stats.distracted_time }}s</h3>
+            <p class="stat-label">Distracted Time</p>
+        </div>
+        <div>
+            <h3>{{ stats.absent_time }}s</h3>
+            <p class="stat-label">Absent Time</p>
+        </div>
+        <div>
+            <h3>{{ "%.1f"|format(stats.focus_rate) }}%</h3>
+            <p class="stat-label">Total Focus Rate</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

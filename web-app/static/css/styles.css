@@ -270,4 +270,83 @@ main {
     background: var(--error-color);
 }
 
+/* History Table & Page */
+.history-container {
+    max-width: 1000px;
+}
+.history-table-wrapper {
+    overflow-x: auto;
+    margin-top: 2rem;
+}
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+.history-table th {
+    padding: 1rem;
+    border-bottom: 2px solid var(--border-color);
+    color: var(--text-muted);
+}
+.history-table td {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s;
+}
+
+/* Archive View Specifics */
+.archive-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+.archive-title {
+    margin-bottom: 0;
+}
+.btn-link-back {
+    padding: 0.5rem 1rem;
+    border: none;
+    text-decoration: underline;
+}
+
+/* Pomodoro Timer Specifics */
+.pomodoro-timer {
+    font-family: 'Outfit', sans-serif;
+    font-size: 3rem;
+    font-weight: bold;
+    margin: 1rem 0;
+}
+.pomodoro-focus {
+    color: var(--accent-color);
+}
+.pomodoro-break {
+    color: var(--success-color);
+}
+.pomodoro-phase {
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+}
+
+/* General Utilities */
+.text-success-bold {
+    color: var(--success-color);
+    font-weight: bold;
+}
+.text-error { color: var(--error-color); }
+.text-capitalize { text-transform: capitalize; }
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+.btn-auto-width {
+    display: inline-block;
+    width: auto;
+}
+.d-inline-block { display: inline-block; }
+.mb-1 { margin-bottom: 1rem; }
+.block-display { display: block; }
+
 
