@@ -122,7 +122,7 @@ def index():
     """
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
-    return render_template("index.html")
+    return render_template("login.html")
 
 
 @app.route("/dashboard")
@@ -143,25 +143,25 @@ def dashboard():
 
     # Calculate stats for all fetched sessions
     def calculate_stats(session_id):
-        fc = snapshots_col.count_documents(
+        Fc = snapshots_col.count_documents(
             {"session_id": session_id, "classification": "focused"}
         )
-        dc = snapshots_col.count_documents(
+        Dc = snapshots_col.count_documents(
             {"session_id": session_id, "classification": "distracted"}
         )
-        ac = snapshots_col.count_documents(
+        Ac = snapshots_col.count_documents(
             {"session_id": session_id, "classification": "absent"}
         )
-        tt = (fc + dc + ac) * 10
-        ft = fc * 10
-        dt = dc * 10
-        at = ac * 10
-        rate = (ft / tt * 100) if tt > 0 else 0
+        Tt = (Fc + Dc + Ac) * 10
+        Ft = Fc * 10
+        Dt = Dc * 10
+        At = Ac * 10
+        rate = (Ft / Tt * 100) if Tt > 0 else 0
         return {
-            "focused_time": ft,
-            "distracted_time": dt,
-            "absent_time": at,
-            "total_time": tt,
+            "focused_time": Ft,
+            "distracted_time": Dt,
+            "absent_time": At,
+            "total_time": Tt,
             "focus_rate": rate,
         }
 
@@ -194,9 +194,51 @@ def dashboard():
         }
     elif past_sessions:
         stats = calculate_stats(past_sessions[0]["_id"])
+    recent_sessions = []
+    focused_total = 0
+    distracted_total = 0
     for ps in past_sessions:
         ps["stats"] = calculate_stats(ps["_id"])
-    return redirect(url_for("index"))
+        recent_sessions.append(
+            {
+                "date": ps["start_time"].strftime("%Y-%m-%d"),
+                "focus_rate": ps["stats"]["focus_rate"],
+            }
+        )
+        focused_total = focused_total + ps["stats"]["focused_time"]
+        distracted_total = distracted_total + ps["stats"]["distracted_time"]
+    if stats is not None:
+        focused_time = stats["focused_time"]
+        distracted_time = stats["distracted_time"]
+        absent_time = stats["absent_time"]
+        focus_rate = stats["focus_rate"]
+    else:
+        focused_time = 0
+        distracted_time = 0
+        absent_time = 0
+        focus_rate = 0
+    if pomodoro is not None:
+        mode = pomodoro["phase"]
+        time_left = pomodoro["timer"]
+    else:
+        mode = None
+        time_left = None
+    return render_template(
+        "index.html",
+        active_session=active_session,
+        username=current_user.username,
+        distraction_message="You seem distracted! Focus!",
+        focused_time=focused_time,
+        absent_time=absent_time,
+        distracted_time=distracted_time,
+        time_left=time_left,
+        mode=mode,
+        recent_sessions=recent_sessions,
+        focus_rate=focus_rate,
+        focused_total=focused_total,
+        distracted_total=distracted_total,
+        progress=0,
+    )
 
 
 @app.route("/session/start", methods=["POST"])
@@ -256,7 +298,7 @@ def signup():
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
-
+        confirm_password = request.form.get("confirm_password", "")
         error = None
         if not username:
             error = "Username is required."
@@ -264,6 +306,8 @@ def signup():
             error = "Password is required."
         elif len(password) < 6:
             error = "Password must be at least 6 characters."
+        elif password != confirm_password:
+            error = "Passwords do not match"
         elif users_col.find_one({"email": email}):
             error = "An account with that email already exists."
         elif users_col.find_one({"username": username}):
@@ -272,10 +316,10 @@ def signup():
         if error:
             flash(error, "error")
             return render_template("signup.html", username=username, email=email)
-
         # hash password
         new_user = {
             "username": username,
+            "email": email,
             "password_hash": generate_password_hash(password),
             "created_at": datetime.datetime.utcnow(),
             "role": None,
@@ -354,20 +398,20 @@ def history():  # pylint: disable=too-many-locals
     sessions_list = []
     for sess in past_sessions_cursor:
         sess_id = sess["_id"]
-        fc = snapshots_col.count_documents(
+        Fc = snapshots_col.count_documents(
             {"session_id": sess_id, "classification": "focused"}
         )
-        dc = snapshots_col.count_documents(
+        Dc = snapshots_col.count_documents(
             {"session_id": sess_id, "classification": "distracted"}
         )
-        ac = snapshots_col.count_documents(
+        Ac = snapshots_col.count_documents(
             {"session_id": sess_id, "classification": "absent"}
         )
-        tt = (fc + dc + ac) * 10
-        ft = fc * 10
-        dt = dc * 10
-        rate = (ft / tt * 100) if tt > 0 else 0
-        distract_rate = (dt / tt * 100) if tt > 0 else 0
+        Tt = (Fc + Dc + Ac) * 10
+        Ft = Fc * 10
+        Dt = Dc * 10
+        rate = (Ft / Tt * 100) if Tt > 0 else 0
+        distract_rate = (Dt / Tt * 100) if Tt > 0 else 0
 
         duration = 0
         if sess.get("end_time"):
