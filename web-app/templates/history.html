@@ -3,9 +3,9 @@
 {% block title %}History - Terminal Titans{% endblock %}
 
 {% block content %}
-<div class="auth-card dashboard-card history-container">
+<div class="auth-card dashboard-card history-container container-large">
     <h2 class="auth-title">Session History</h2>
-    <p class="auth-subtitle">Review your past study sequences.</p>
+    <p class="auth-subtitle">All your past study sequences, sorted by most recent first.</p>
 
     {% if sessions %}
     <div class="history-table-wrapper">
@@ -13,9 +13,10 @@
             <thead>
                 <tr>
                     <th>Date</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
                     <th>Duration</th>
-                    <th>Focused %</th>
-                    <th>Distracted %</th>
+                    <th>Focus %</th>
                     <th>Dominant Emotion</th>
                     <th>Action</th>
                 </tr>
@@ -24,12 +25,13 @@
                 {% for sess in sessions %}
                 <tr>
                     <td>{{ sess.date }}</td>
+                    <td>{{ sess.start_time }}</td>
+                    <td>{{ sess.end_time }}</td>
                     <td>{{ sess.duration }} mins</td>
                     <td class="text-success-bold">{{ "%.1f"|format(sess.focused_percent) }}%</td>
-                    <td class="text-error">{{ "%.1f"|format(sess.distracted_percent) }}%</td>
                     <td class="text-capitalize">{{ sess.dominant_emotion }}</td>
                     <td>
-                        <a href="{{ url_for('session_archive', session_id=sess.id) }}" class="btn-outline btn-sm">View</a>
+                        <a href="{{ url_for('session_detail', session_id=sess.id) }}" class="btn-outline btn-sm">View Details</a>
                     </td>
                 </tr>
                 {% endfor %}

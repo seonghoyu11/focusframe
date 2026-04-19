@@ -1,101 +1,88 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Terminal Titans{% endblock %}
+{% block title %}Session Detail - Terminal Titans{% endblock %}
 
 {% block content %}
-{% if active_session %}
-<!-- Auto-refresh the page every 10 seconds while session is active so stats update -->
-<meta http-equiv="refresh" content="10">
-{% endif %}
-
-<div class="auth-card dashboard-card">
-    <h2 class="auth-title">Welcome back, {{ current_user.username }}!</h2>
-
-    {% if active_session %}
-    <div class="status-panel active">
-        <span class="badge badge-success mb-1 d-inline-block">
-            Session Active
-        </span>
-        <div class="pomodoro-timer {% if pomodoro.phase == 'FOCUS' %}pomodoro-focus{% else %}pomodoro-break{% endif %}">
-            {{ pomodoro.timer }}
+<div class="auth-card dashboard-card container-large">
+    <div class="detail-header">
+        <div>
+            <h2 class="auth-title archive-title">Session Detail</h2>
+            <p class="text-muted">Detailed breakdown of your study performance.</p>
         </div>
-        <div class="pomodoro-phase">
-            Phase: {{ pomodoro.phase }}
-        </div>
-        <p class="text-muted mt-1">
-            Started at: {{ active_session.start_time.strftime('%Y-%m-%d %H:%M:%S') }} UTC
-        </p>
-
-        <div class="stats-grid">
-            <div>
-                <h3>{{ stats.focused_time if stats else 0 }}s</h3>
-                <p class="stat-label">Focused</p>
-            </div>
-            <div>
-                <h3>{{ stats.distracted_time if stats else 0 }}s</h3>
-                <p class="stat-label">Distracted</p>
-            </div>
-            <div>
-                <h3>{{ stats.absent_time if stats else 0 }}s</h3>
-                <p class="stat-label">Absent</p>
-            </div>
-        </div>
-
-        <form action="{{ url_for('stop_session') }}" method="POST">
-            <button type="submit" class="btn-primary btn-danger">
-                Stop Study Session
-            </button>
-        </form>
-    </div>
-    {% else %}
-    <div class="status-panel inactive">
-        <h3 class="mb-2">Ready for your next session?</h3>
-        <form action="{{ url_for('start_session') }}" method="POST">
-            <button type="submit" class="btn-primary">
-                Start Study Session
-            </button>
-        </form>
+        <a href="{{ url_for('history') }}" class="btn-outline btn-link-back">← Back to History</a>
     </div>
 
-    {% if stats %}
-    <h3 class="mt-3">Latest Session Stats</h3>
-    <div class="stats-grid boxed">
-        <div>
-            <h3>{{ stats.focused_time }}s</h3>
-            <p class="stat-label">Focused Time</p>
-        </div>
-        <div>
-            <h3>{{ stats.distracted_time }}s</h3>
-            <p class="stat-label">Distracted Time</p>
-        </div>
-        <div>
-            <h3>{{ "%.1f"|format(stats.focus_rate) }}%</h3>
-            <p class="stat-label">Focus Rate</p>
+    <!-- Summary Card -->
+    <div class="history-item block-display summary-card-detailed">
+        <div class="summary-content-layout">
+            <div>
+                <div class="history-item-header">
+                    <strong>Date:</strong> {{ session.start_time.strftime('%Y-%m-%d') }}<br>
+                    <strong>Timeframe:</strong> {{ session.start_time.strftime('%H:%M:%S') }} - {{ session.end_time.strftime('%H:%M:%S') if session.end_time else '—' }} UTC
+                </div>
+                
+                <div class="stats-grid boxed compact-stats-grid">
+                    <div>
+                        <h3>{{ stats.total_time }}s</h3>
+                        <p class="stat-label">Total Duration</p>
+                    </div>
+                    <div>
+                        <h3 class="text-success-bold">{{ "%.1f"|format(stats.focus_rate) }}%</h3>
+                        <p class="stat-label">Focus Rate</p>
+                    </div>
+                    <div>
+                        <h3 class="text-error">{{ "%.1f"|format(stats.distract_rate) }}%</h3>
+                        <p class="stat-label">Distraction</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CSS Focus Chart -->
+            <div class="focus-chart-container">
+                <div class="focus-ring">
+                    <svg width="150" height="150">
+                        <circle class="focus-ring-bg" cx="75" cy="75" r="65"></circle>
+                        <circle class="focus-ring-fill" cx="75" cy="75" r="65" 
+                                style="--dash-offset: {{ stats.dash_offset }};">
+                        </circle>
+                    </svg>
+                    <div class="focus-percentage">
+                        <h2>{{ "%.0f"|format(stats.focus_rate) }}%</h2>
+                        <span>FOCUSED</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-    {% endif %}
 
-    {% if past_sessions %}
-    <h3 class="mt-3">Recent Sessions</h3>
-    <div class="mt-1">
-        {% for s in past_sessions %}
-        <div class="history-item">
-            <div>
-                <strong>Started:</strong> {{ s.start_time.strftime('%Y-%m-%d %H:%M') }}<br>
-                <strong>Ended:</strong> {{ s.end_time.strftime('%Y-%m-%d %H:%M') if s.end_time else 'Unknown' }}
-            </div>
-            <div class="text-right">
-                <span class="stat-highlight">
-                    {{ "%.1f"|format(s.stats.focus_rate) }}%
-                </span><br>
-                <span class="stat-label">Focus Rate</span>
+    <!-- Snapshot Grid -->
+    <h3 class="mt-3">Snapshot Timeline</h3>
+    {% if snapshots %}
+    <div class="snapshot-grid">
+        {% for snap in snapshots %}
+        <div class="snapshot-card">
+            {% if snap.image_b64 %}
+            <img src="data:image/jpeg;base64,{{ snap.image_b64 }}" alt="Snapshot" class="snapshot-img">
+            {% else %}
+            <div class="snapshot-img snapshot-no-img">No Image</div>
+            {% endif %}
+            <div class="snapshot-info">
+                <div class="snapshot-time">{{ snap.timestamp }}</div>
+                <div class="snapshot-emotion text-capitalize">{{ snap.emotion }}</div>
+                <div class="snapshot-confidence text-muted">
+                    {{ "%.0f"|format(snap.confidence * 100) }}% confidence
+                </div>
+                <span class="snapshot-badge snapshot-badge-{{ snap.classification }}">
+                    {{ snap.classification }}
+                </span>
             </div>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <p class="text-muted text-center mt-2">No past sessions yet.</p>
-    {% endif %}
+    <div class="snapshot-empty-state">
+        <p class="text-muted">No snapshots recorded for this session.</p>
+    </div>
     {% endif %}
 </div>
 {% endblock %}

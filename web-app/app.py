@@ -196,13 +196,7 @@ def dashboard():
         stats = calculate_stats(past_sessions[0]["_id"])
     for ps in past_sessions:
         ps["stats"] = calculate_stats(ps["_id"])
-    return render_template(
-        "session_detail.html",
-        active_session=active_session,
-        stats=stats,
-        past_sessions=past_sessions,
-        pomodoro=pomodoro,
-    )
+    return redirect(url_for("index"))
 
 
 @app.route("/session/start", methods=["POST"])
@@ -385,11 +379,16 @@ def history():  # pylint: disable=too-many-locals
         ]
         dom_emotion = "None"
         if emotions:
-            dom_emotion = Counter(emotions).most_common(1)[0][0]
+            try:
+                dom_emotion = Counter(emotions).most_common(1)[0][0]
+            except (IndexError, KeyError):
+                dom_emotion = "None"
 
         sess_data = {
             "id": str(sess_id),
-            "date": sess["start_time"].strftime("%Y-%m-%d %H:%M"),
+            "date": sess["start_time"].strftime("%Y-%m-%d"),
+            "start_time": sess["start_time"].strftime("%H:%M"),
+            "end_time": sess["end_time"].strftime("%H:%M") if sess.get("end_time") else "—",
             "duration": duration,
             "focused_percent": rate,
             "distracted_percent": distract_rate,
@@ -401,9 +400,9 @@ def history():  # pylint: disable=too-many-locals
 
 @app.route("/session/<session_id>")
 @login_required
-def session_archive(session_id):
+def session_detail(session_id):
     """
-    Shows detailed stats of a specific past session.
+    Shows detailed stats of a specific past session (Page 5).
     """
     try:
         sess = sessions_col.find_one(
@@ -415,20 +414,18 @@ def session_archive(session_id):
     if not sess:
         flash("Session not found.", "error")
         return redirect(url_for("history"))
-    fc = snapshots_col.count_documents(
-        {"session_id": sess["_id"], "classification": "focused"}
-    )
-    dc = snapshots_col.count_documents(
-        {"session_id": sess["_id"], "classification": "distracted"}
-    )
-    ac = snapshots_col.count_documents(
-        {"session_id": sess["_id"], "classification": "absent"}
-    )
+
+    # stats calculation
+    fc = snapshots_col.count_documents({"session_id": sess["_id"], "classification": "focused"})
+    dc = snapshots_col.count_documents({"session_id": sess["_id"], "classification": "distracted"})
+    ac = snapshots_col.count_documents({"session_id": sess["_id"], "classification": "absent"})
+    
     tt = (fc + dc + ac) * 10
     ft = fc * 10
     dt = dc * 10
     at = ac * 10
     rate = (ft / tt * 100) if tt > 0 else 0
+    distract_rate = (dt / tt * 100) if tt > 0 else 0
 
     stats = {
         "focused_time": ft,
@@ -436,8 +433,27 @@ def session_archive(session_id):
         "absent_time": at,
         "total_time": tt,
         "focus_rate": rate,
+        "distract_rate": distract_rate,
+        "dash_offset": 408.4 * (1 - rate / 100),
     }
-    return render_template("archive.html", session=sess, stats=stats)
+
+    # Fetch snapshots with base64 images
+    import base64  # pylint: disable=import-outside-toplevel
+    raw_snaps = list(snapshots_col.find({"session_id": sess["_id"]}).sort("timestamp", 1))
+    snapshots = []
+    for snap in raw_snaps:
+        img_b64 = None
+        if snap.get("image"):
+            img_b64 = base64.b64encode(snap["image"]).decode("utf-8")
+        snapshots.append({
+            "timestamp": snap["timestamp"].strftime("%H:%M:%S"),
+            "emotion": snap.get("emotion", "unknown"),
+            "confidence": snap.get("confidence", 0),
+            "classification": snap.get("classification", "unknown"),
+            "image_b64": img_b64,
+        })
+
+    return render_template("session_detail.html", session=sess, stats=stats, snapshots=snapshots)
 
 
 if __name__ == "__main__":
