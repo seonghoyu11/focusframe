@@ -32,7 +32,6 @@ def git_config(key):
 
 
 def main():
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--event", default="agent", help="Event type (default: agent)")
     args = parser.parse_args()
