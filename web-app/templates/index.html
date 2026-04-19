@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
+{% block extra_head %}
+    {% if active_session %}
+        <meta http-equiv="refresh" content="1">
+    {% endif %}
+{% endblock %}
 {% block content %}
     <h1>FocusFrame Dashboard</h1>
     {% if active_session %}

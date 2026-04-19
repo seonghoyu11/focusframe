@@ -6,7 +6,9 @@
     <title>{% block title %}Terminal Titans{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@700&display=swap" rel="stylesheet">
-</head>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@700&display=swap" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
+  </head>
 <body>
     <header class="site-header">
         <h1 class="logo">TERMINAL TITANS</h1>
