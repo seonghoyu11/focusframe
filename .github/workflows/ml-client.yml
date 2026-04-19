@@ -46,4 +46,6 @@ jobs:
         run: pipenv run pylint *.py tests/
 
       - name: Run Pytest with Coverage
+        env:
+          MONGO_URI: mongodb://localhost:27017/focusframe
         run: pipenv run pytest --cov=. --cov-fail-under=80
