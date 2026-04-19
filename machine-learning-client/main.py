@@ -5,10 +5,11 @@ import time
 import uuid
 import base64
 import datetime
-from fer.fer import FER  # pylint: disable=import-error
 import cv2  # pylint: disable=import-error
 
 from db import get_active_session, save_snapshot, update_session_notification
+
+FER = None
 
 CAPTURE_INTERVAL_SECONDS = int(os.environ.get("CAPTURE_INTERVAL_SECONDS", "30"))
 IMAGE_DIR = "captured_images"
@@ -148,7 +149,13 @@ def process_active_session(detector, session):
 
 def main():
     """Main polling loop for FocusFrame."""
-    detector = FER(mtcnn=False)
+    fer_class = FER
+
+    if fer_class is None:
+        from fer.fer import FER as runtime_fer  # pylint: disable=import-error
+        fer_class = runtime_fer
+
+    detector = fer_class(mtcnn=False)
 
     while True:
         active_session = get_active_session()
@@ -160,7 +167,6 @@ def main():
             print("No active session found.")
 
         time.sleep(CAPTURE_INTERVAL_SECONDS)
-
 
 if __name__ == "__main__":
     main()

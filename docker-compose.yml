@@ -5,6 +5,8 @@ services:
     container_name: ml-client
     environment:
       - MONGO_URI=${MONGO_URI}
+      - MONGO_DBNAME=${MONGO_DBNAME}
+      - CAPTURE_INTERVAL_SECONDS=${CAPTURE_INTERVAL_SECONDS}
     networks:
       - app-network
 
@@ -16,6 +18,8 @@ services:
       - "3000:5000"
     environment:
       - MONGO_URI=${MONGO_URI}
+      - MONGO_DBNAME=${MONGO_DBNAME}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
     networks:
       - app-network
 

@@ -4,7 +4,6 @@ import os
 import datetime
 from pymongo import MongoClient  # pylint: disable=import-error
 
-MONGO_URI = os.environ["MONGO_URI"]
 DB_NAME = os.environ.get("MONGO_DBNAME", "focusframe")
 
 SESSIONS_COLLECTION = "sessions"
@@ -13,7 +12,8 @@ SNAPSHOTS_COLLECTION = "snapshots"
 
 def get_database():
     """Return the MongoDB database used by the ML client."""
-    client = MongoClient(MONGO_URI)
+    mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+    client = MongoClient(mongo_uri)
     return client[DB_NAME]
 
 
@@ -30,7 +30,7 @@ def save_snapshot(snapshot):
 
 
 def update_session_notification(session_id, notification_type, message):
-    """Update the active session with a distraction/absence notification."""
+    """Update the active session with a distraction or absence notification."""
     database = get_database()
     database[SESSIONS_COLLECTION].update_one(
         {"_id": session_id},
