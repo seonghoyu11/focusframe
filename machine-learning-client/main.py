@@ -93,7 +93,8 @@ def store_data(img_frame, emotion, score, classification):
         {"$inc": {"snapshot_count": 1}},
     )
     print(f"Snapshot stored successfully for session {active_session['_id']}")
-    return active_session["_id"] 
+    return active_session["_id"]
+
 
 if __name__ == "__main__":
     print("FocusFrame ML Client starting...")

@@ -32,7 +32,7 @@ def save_record(record):
 
 
 def set_session_notification(session_id, classification):
-    import datetime 
+    import datetime
 
     messages = {
         "distracted": "You seem distracted! Get back to studying.",
