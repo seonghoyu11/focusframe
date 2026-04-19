@@ -9,9 +9,9 @@ setuptools = "*"
 pymongo = {extras = ["srv"], version = "*"}
 
 [dev-packages]
-pytest = "*"
 pylint = "*"
 black = "*"
+pytest = "*"
 pytest-cov = "*"
 mongomock = "*"
 
