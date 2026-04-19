@@ -1,12 +1,22 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.automations/launch-give-student-credit.py\" --event=claude --record-prompt-only || python \"$CLAUDE_PROJECT_DIR/.automations/launch-give-student-credit.py\" --event=claude --record-prompt-only"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.automations/give-student-credit.py\" --event=claude || python \"$CLAUDE_PROJECT_DIR/.automations/give-student-credit.py\" --event=claude"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.automations/launch-give-student-credit.py\" --event=claude || python \"$CLAUDE_PROJECT_DIR/.automations/launch-give-student-credit.py\" --event=claude"
           }
         ]
       }

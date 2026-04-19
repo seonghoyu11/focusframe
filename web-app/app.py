@@ -1,11 +1,12 @@
 """Main Flask application for the web app."""
 
-import datetime  # pylint: disable=import-error
-import os  # pylint: disable=import-error
+import base64
+import datetime
+import os
 from collections import Counter
 
-from dotenv import load_dotenv
 from bson.objectid import ObjectId  # pylint: disable=import-error
+from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, url_for
 from flask_login import (
     LoginManager,
@@ -17,6 +18,7 @@ from flask_login import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from charts import generate_focus_chart
 from db import (
     get_database,
     USERS_COLLECTION,
@@ -103,23 +105,79 @@ def load_user(user_id):
 
 @app.before_request
 def check_auth():
-    """
-    Global authentication check. Redirects unauthenticated users to the
-    login page for all routes except those in the public_endpoints list.
-    """
+    """Global authentication check."""
     public_endpoints = ["index", "login", "signup", "static"]
     if not current_user.is_authenticated and request.endpoint not in public_endpoints:
         return redirect(url_for("login"))
     return None
 
 
+def _calculate_stats(session_id):
+    """Calculate per-session focus stats from snapshot counts."""
+    interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
+    focused_count = snapshots_col.count_documents(
+        {"session_id": session_id, "classification": "focused"}
+    )
+    distracted_count = snapshots_col.count_documents(
+        {"session_id": session_id, "classification": "distracted"}
+    )
+    absent_count = snapshots_col.count_documents(
+        {"session_id": session_id, "classification": "absent"}
+    )
+    total_time = (focused_count + distracted_count + absent_count) * interval
+    focused_time = focused_count * interval
+    distracted_time = distracted_count * interval
+    absent_time = absent_count * interval
+    rate = (focused_time / total_time * 100) if total_time > 0 else 0
+    distract_rate = (distracted_time / total_time * 100) if total_time > 0 else 0
+    return {
+        "focused_time": focused_time,
+        "distracted_time": distracted_time,
+        "absent_time": absent_time,
+        "total_time": total_time,
+        "focus_rate": rate,
+        "distract_rate": distract_rate,
+    }
+
+
+def _compute_session_totals(session_id):
+    """Aggregate snapshot classifications into seconds-per-bucket."""
+    interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
+    pipeline = [
+        {"$match": {"session_id": session_id}},
+        {"$group": {"_id": "$classification", "count": {"$sum": 1}}},
+    ]
+    counts = {doc["_id"]: doc["count"] for doc in snapshots_col.aggregate(pipeline)}
+    total = sum(counts.values())
+    return {
+        "total_focused_seconds": counts.get("focused", 0) * interval,
+        "total_distracted_seconds": counts.get("distracted", 0) * interval,
+        "total_absent_seconds": counts.get("absent", 0) * interval,
+        "snapshot_count": total,
+    }
+
+
+def get_recent_notification(active_session, max_age_seconds=30):
+    """Return the session's notification dict if recent, else None.
+
+    Issue #58 — web app reads the distraction flag set by the ML client.
+    Notifications older than ``max_age_seconds`` are treated as stale so
+    the banner clears automatically on the next page refresh (1s per #56).
+    """
+    if not active_session:
+        return None
+    notif = active_session.get("notification")
+    if not notif or not notif.get("timestamp"):
+        return None
+    age = (datetime.datetime.utcnow() - notif["timestamp"]).total_seconds()
+    if age > max_age_seconds:
+        return None
+    return notif
+
+
 @app.route("/")
 def index():
-    """
-    Route for the index page
-    Returns:
-        rendered template (str): The rendered HTML template.
-    """
+    """Route for the index page."""
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     return render_template("login.html")
@@ -127,13 +185,10 @@ def index():
 
 @app.route("/dashboard")
 @login_required
-def dashboard():
-    """
-    Dashboard for displaying session stats and controls.
-    """
+def dashboard():  # pylint: disable=too-many-locals,too-many-statements
+    """Dashboard for displaying session stats and controls."""
     user_id = current_user.get_id()
     active_session = sessions_col.find_one({"user_id": user_id, "status": "active"})
-    # Fetch up to 2 past sessions
     past_sessions_cursor = (
         sessions_col.find({"user_id": user_id, "status": "completed"})
         .sort("start_time", -1)
@@ -141,34 +196,10 @@ def dashboard():
     )
     past_sessions = list(past_sessions_cursor)
 
-    # Calculate stats for all fetched sessions
-    def calculate_stats(session_id):
-        Fc = snapshots_col.count_documents(
-            {"session_id": session_id, "classification": "focused"}
-        )
-        Dc = snapshots_col.count_documents(
-            {"session_id": session_id, "classification": "distracted"}
-        )
-        Ac = snapshots_col.count_documents(
-            {"session_id": session_id, "classification": "absent"}
-        )
-        Tt = (Fc + Dc + Ac) * 10
-        Ft = Fc * 10
-        Dt = Dc * 10
-        At = Ac * 10
-        rate = (Ft / Tt * 100) if Tt > 0 else 0
-        return {
-            "focused_time": Ft,
-            "distracted_time": Dt,
-            "absent_time": At,
-            "total_time": Tt,
-            "focus_rate": rate,
-        }
-
     pomodoro = None
     stats = None
     if active_session:
-        stats = calculate_stats(active_session["_id"])
+        stats = _calculate_stats(active_session["_id"])
         pom_start = active_session.get(
             "pomodoro_phase_start", active_session["start_time"]
         )
@@ -193,12 +224,13 @@ def dashboard():
             "cycle": cycle,
         }
     elif past_sessions:
-        stats = calculate_stats(past_sessions[0]["_id"])
+        stats = _calculate_stats(past_sessions[0]["_id"])
+
     recent_sessions = []
     focused_total = 0
     distracted_total = 0
     for ps in past_sessions:
-        ps["stats"] = calculate_stats(ps["_id"])
+        ps["stats"] = _calculate_stats(ps["_id"])
         recent_sessions.append(
             {
                 "date": ps["start_time"].strftime("%Y-%m-%d"),
@@ -207,6 +239,7 @@ def dashboard():
         )
         focused_total = focused_total + ps["stats"]["focused_time"]
         distracted_total = distracted_total + ps["stats"]["distracted_time"]
+
     if stats is not None:
         focused_time = stats["focused_time"]
         distracted_time = stats["distracted_time"]
@@ -217,17 +250,29 @@ def dashboard():
         distracted_time = 0
         absent_time = 0
         focus_rate = 0
+
     if pomodoro is not None:
         mode = pomodoro["phase"]
         time_left = pomodoro["timer"]
     else:
         mode = None
         time_left = None
+
+    chart_totals = {
+        "focused": focused_time if active_session else focused_total,
+        "distracted": distracted_time if active_session else distracted_total,
+        "absent": absent_time if active_session else 0,
+    }
+    chart_b64 = generate_focus_chart(chart_totals)
+
+    notification = get_recent_notification(active_session)
+    distraction_message = notification["message"] if notification else None
+
     return render_template(
         "index.html",
         active_session=active_session,
         username=current_user.username,
-        distraction_message="You seem distracted! Focus!",
+        distraction_message=distraction_message,
         focused_time=focused_time,
         absent_time=absent_time,
         distracted_time=distracted_time,
@@ -238,6 +283,7 @@ def dashboard():
         focused_total=focused_total,
         distracted_total=distracted_total,
         progress=0,
+        chart=chart_b64,
     )
 
 
@@ -275,10 +321,26 @@ def start_session():
 @app.route("/session/stop", methods=["POST"])
 @login_required
 def stop_session():
-    """Stops the current focus session."""
+    """Stops the current focus session and writes aggregated totals."""
+    active = sessions_col.find_one(
+        {"user_id": current_user.get_id(), "status": "active"}
+    )
+    if not active:
+        flash("No active session to stop.", "info")
+        return redirect(url_for("dashboard"))
+
+    totals = _compute_session_totals(active["_id"])
+
     sessions_col.update_one(
-        {"user_id": current_user.get_id(), "status": "active"},
-        {"$set": {"status": "completed", "end_time": datetime.datetime.utcnow()}},
+        {"_id": active["_id"]},
+        {
+            "$set": {
+                "status": "completed",
+                "end_time": datetime.datetime.utcnow(),
+                "notification": None,
+                **totals,
+            }
+        },
     )
     flash("Study session stopped.", "info")
     return redirect(url_for("dashboard"))
@@ -286,11 +348,7 @@ def stop_session():
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
-    """
-    Route for the signup page
-    Returns:
-        rendered template (str): The rendered HTML template.
-    """
+    """Route for the signup page."""
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
 
@@ -316,7 +374,7 @@ def signup():
         if error:
             flash(error, "error")
             return render_template("signup.html", username=username, email=email)
-        # hash password
+
         new_user = {
             "username": username,
             "email": email,
@@ -327,7 +385,6 @@ def signup():
         result = users_col.insert_one(new_user)
         new_user["_id"] = result.inserted_id
 
-        # log in after signing up
         login_user(User(new_user))
         flash(f"Welcome to Terminal Titans, {username}!", "success")
         return redirect(url_for("dashboard"))
@@ -337,11 +394,7 @@ def signup():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """
-    Route for the login page
-    Returns:
-        rendered template (str): The rendered HTML template.
-    """
+    """Route for the login page."""
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
 
@@ -374,11 +427,7 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
-    """
-    Route for the logout page
-    Returns:
-        rendered template (str): The rendered HTML template.
-    """
+    """Route for the logout page."""
     logout_user()
     flash("You've been logged out.", "info")
     return redirect(url_for("index"))
@@ -386,10 +435,8 @@ def logout():
 
 @app.route("/history")
 @login_required
-def history():  # pylint: disable=too-many-locals
-    """
-    Shows a table of all past sessions.
-    """
+def history():
+    """Shows a table of all past sessions."""
     user_id = current_user.get_id()
     past_sessions_cursor = sessions_col.find(
         {"user_id": user_id, "status": "completed"}
@@ -398,20 +445,7 @@ def history():  # pylint: disable=too-many-locals
     sessions_list = []
     for sess in past_sessions_cursor:
         sess_id = sess["_id"]
-        Fc = snapshots_col.count_documents(
-            {"session_id": sess_id, "classification": "focused"}
-        )
-        Dc = snapshots_col.count_documents(
-            {"session_id": sess_id, "classification": "distracted"}
-        )
-        Ac = snapshots_col.count_documents(
-            {"session_id": sess_id, "classification": "absent"}
-        )
-        Tt = (Fc + Dc + Ac) * 10
-        Ft = Fc * 10
-        Dt = Dc * 10
-        rate = (Ft / Tt * 100) if Tt > 0 else 0
-        distract_rate = (Dt / Tt * 100) if Tt > 0 else 0
+        stats = _calculate_stats(sess_id)
 
         duration = 0
         if sess.get("end_time"):
@@ -436,8 +470,8 @@ def history():  # pylint: disable=too-many-locals
                 sess["end_time"].strftime("%H:%M") if sess.get("end_time") else "—"
             ),
             "duration": duration,
-            "focused_percent": rate,
-            "distracted_percent": distract_rate,
+            "focused_percent": stats["focus_rate"],
+            "distracted_percent": stats["distract_rate"],
             "dominant_emotion": dom_emotion,
         }
         sessions_list.append(sess_data)
@@ -447,9 +481,7 @@ def history():  # pylint: disable=too-many-locals
 @app.route("/session/<session_id>")
 @login_required
 def session_detail(session_id):
-    """
-    Shows detailed stats of a specific past session (Page 5).
-    """
+    """Shows detailed stats of a specific past session."""
     try:
         sess = sessions_col.find_one(
             {"_id": ObjectId(session_id), "user_id": current_user.get_id()}
@@ -461,36 +493,8 @@ def session_detail(session_id):
         flash("Session not found.", "error")
         return redirect(url_for("history"))
 
-    # stats calculation
-    fc = snapshots_col.count_documents(
-        {"session_id": sess["_id"], "classification": "focused"}
-    )
-    dc = snapshots_col.count_documents(
-        {"session_id": sess["_id"], "classification": "distracted"}
-    )
-    ac = snapshots_col.count_documents(
-        {"session_id": sess["_id"], "classification": "absent"}
-    )
-
-    tt = (fc + dc + ac) * 10
-    ft = fc * 10
-    dt = dc * 10
-    at = ac * 10
-    rate = (ft / tt * 100) if tt > 0 else 0
-    distract_rate = (dt / tt * 100) if tt > 0 else 0
-
-    stats = {
-        "focused_time": ft,
-        "distracted_time": dt,
-        "absent_time": at,
-        "total_time": tt,
-        "focus_rate": rate,
-        "distract_rate": distract_rate,
-        "dash_offset": 408.4 * (1 - rate / 100),
-    }
-
-    # Fetch snapshots with base64 images
-    import base64  # pylint: disable=import-outside-toplevel
+    stats = _calculate_stats(sess["_id"])
+    stats["dash_offset"] = 408.4 * (1 - stats["focus_rate"] / 100)
 
     raw_snaps = list(
         snapshots_col.find({"session_id": sess["_id"]}).sort("timestamp", 1)

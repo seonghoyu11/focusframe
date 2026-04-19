@@ -8,7 +8,12 @@ import cv2  # pylint: disable=import-error
 from dotenv import load_dotenv
 from fer.fer import FER  # pylint: disable=import-error
 
-from db import SESSIONS_COLLECTION, get_collection, save_snapshot
+from db import (
+    SESSIONS_COLLECTION,
+    get_collection,
+    save_snapshot,
+    set_session_notification,
+)
 
 load_dotenv()
 
@@ -51,25 +56,24 @@ def distraction_classification(data):
 
 
 def store_data(img_frame, emotion, score, classification):
+    """Fetches the active session and stores the snapshot data in MongoDB.
+
+    Returns:
+        The ObjectId of the active session if storage succeeded, else None.
     """
-    Fetches the active session and stores the snapshot data in MongoDB.
-    """
-    # 1. Find the active session
     sessions_col = get_collection(SESSIONS_COLLECTION)
     active_session = sessions_col.find_one({"status": "active"})
 
     if not active_session:
         print("No active focus session found. Skipping storage.")
-        return
+        return None
 
-    # 2. Encode image to JPG binary
     success, buffer = cv2.imencode(".jpg", img_frame)  # pylint: disable=no-member
     if not success:
         print("Failed to encode image. Skipping storage.")
-        return
+        return None
     image_bytes = buffer.tobytes()
 
-    # 3. Create snapshot document
     snapshot = {
         "user_id": active_session.get("user_id"),
         "session_id": active_session.get("_id"),
@@ -80,28 +84,41 @@ def store_data(img_frame, emotion, score, classification):
         "image": image_bytes,
     }
 
-    # save to DB
     save_snapshot(snapshot)
-    # increment snapshot_count on the session
     sessions_col.update_one(
         {"_id": active_session["_id"]},
         {"$inc": {"snapshot_count": 1}},
     )
     print(f"Snapshot stored successfully for session {active_session['_id']}")
+    return active_session["_id"]
 
 
-if __name__ == "__main__":
+def run_loop():
+    """Main capture + analyze + store loop."""
     print("FocusFrame ML Client starting...")
     while True:
         frame, emotion_data = get_face_emotion()
-        if emotion_data:
-            emo, conf = emotion_data
-            cl = distraction_classification(emotion_data)
-            print(f"Detected {emo} ({conf:.2f}) -> {cl}")
-            store_data(frame, emo, conf, cl)
-        else:
-            print("No face detected or capture failed.")
 
-        # capture frequency from .env
+        if frame is not None:
+            if emotion_data is not None:
+                emo, conf = emotion_data
+                classification = distraction_classification(emotion_data)
+            else:
+                # Camera worked but FER found no face -> student is absent.
+                emo, conf = None, 0.0
+                classification = "absent"
+
+            print(f"Classification: {classification} (emotion={emo}, conf={conf})")
+            session_id = store_data(frame, emo, conf, classification)
+
+            if session_id is not None and classification in ("distracted", "absent"):
+                set_session_notification(session_id, classification)
+        else:
+            print("No image captured (camera unavailable).")
+
         interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
         time.sleep(interval)
+
+
+if __name__ == "__main__":
+    run_loop()

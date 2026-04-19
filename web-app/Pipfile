@@ -10,6 +10,7 @@ werkzeug = "*"
 flask = "*"
 pylint = "*"
 flask-login = "*"
+matplotlib = "*"
 
 [dev-packages]
 pylint = "*"
