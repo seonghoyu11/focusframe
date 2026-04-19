@@ -237,6 +237,8 @@ def dashboard():
         focus_rate=focus_rate,
         focused_total=focused_total,
         distracted_total=distracted_total,
+        progress=0
+        chart=0
     )
 
 
