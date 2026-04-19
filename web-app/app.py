@@ -194,35 +194,35 @@ def dashboard():
         }
     elif past_sessions:
         stats = calculate_stats(past_sessions[0]["_id"])
-    recent_sessions=[]
-    focused_total=0
-    distracted_total=0
+    recent_sessions = []
+    focused_total = 0
+    distracted_total = 0
     for ps in past_sessions:
         ps["stats"] = calculate_stats(ps["_id"])
         recent_sessions.append(
             {
-                "date":ps["start_time"].strftime("%Y-%m-%d"),
-                "focus_rate":ps["stats"]["focus_rate"]
-             }
+                "date": ps["start_time"].strftime("%Y-%m-%d"),
+                "focus_rate": ps["stats"]["focus_rate"],
+            }
         )
-        focused_total=focused_total+ps["stats"]["focused_time"]
-        distracted_total=distracted_total+ps["stats"]["distracted_time"]
-    if(stats is not None):
-        focused_time=stats["focused_time"]
-        distracted_time=stats["distracted_time"]
-        absent_time=stats["absent_time"]
-        focus_rate=stats["focus_rate"]
+        focused_total = focused_total + ps["stats"]["focused_time"]
+        distracted_total = distracted_total + ps["stats"]["distracted_time"]
+    if stats is not None:
+        focused_time = stats["focused_time"]
+        distracted_time = stats["distracted_time"]
+        absent_time = stats["absent_time"]
+        focus_rate = stats["focus_rate"]
     else:
-        focused_time=0
-        distracted_time=0
-        absent_time=0
-        focus_rate=0
-    if(pomodoro is not None):
-        mode=pomodoro["phase"]
-        time_left=pomodoro["timer"]
+        focused_time = 0
+        distracted_time = 0
+        absent_time = 0
+        focus_rate = 0
+    if pomodoro is not None:
+        mode = pomodoro["phase"]
+        time_left = pomodoro["timer"]
     else:
-        mode=None
-        time_left=None
+        mode = None
+        time_left = None
     return render_template(
         "index.html",
         active_session=active_session,
@@ -236,7 +236,7 @@ def dashboard():
         recent_sessions=recent_sessions,
         focus_rate=focus_rate,
         focused_total=focused_total,
-        distracted_total=distracted_total
+        distracted_total=distracted_total,
     )
 
 
