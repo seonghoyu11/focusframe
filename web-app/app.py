@@ -125,6 +125,7 @@ def index():
         return redirect(url_for("dashboard"))
     return render_template("login.html")
 
+
 def get_recent_notification(active_session, max_age_seconds=30):
     if not active_session:
         return None
@@ -135,6 +136,7 @@ def get_recent_notification(active_session, max_age_seconds=30):
     if age > max_age_seconds:
         return None
     return notif
+
 
 @app.route("/dashboard")
 @login_required
@@ -234,7 +236,7 @@ def dashboard():
     else:
         mode = None
         time_left = None
-    
+
     chart_totals = {
         "focused": focused_time if active_session else focused_total,
         "distracted": distracted_time if active_session else distracted_total,
@@ -294,16 +296,14 @@ def start_session():
     flash("Study session started!", "success")
     return redirect(url_for("dashboard"))
 
+
 def _compute_session_totals(session_id):
     interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
     pipeline = [
         {"$match": {"session_id": session_id}},
         {"$group": {"_id": "$classification", "count": {"$sum": 1}}},
     ]
-    counts = {
-        doc["_id"]: doc["count"]
-        for doc in snapshots_col.aggregate(pipeline)
-    }
+    counts = {doc["_id"]: doc["count"] for doc in snapshots_col.aggregate(pipeline)}
     total = sum(counts.values())
     return {
         "total_focused_seconds": counts.get("focused", 0) * interval,
@@ -311,6 +311,7 @@ def _compute_session_totals(session_id):
         "total_absent_seconds": counts.get("absent", 0) * interval,
         "snapshot_count": total,
     }
+
 
 @app.route("/session/stop", methods=["POST"])
 @login_required

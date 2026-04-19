@@ -1,9 +1,9 @@
 import base64
 import io
 import matplotlib
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
-matplotlib.use("Agg")  
+matplotlib.use("Agg")
 
 _SLICE_ORDER = ("focused", "distracted", "absent")
 _COLORS = {
@@ -16,7 +16,8 @@ _LABELS = {
     "distracted": "Distracted",
     "absent": "Absent",
 }
-_TEXT_COLOR = "#f8fafc" 
+_TEXT_COLOR = "#f8fafc"
+
 
 def generate_focus_chart(totals):
     values = [int(totals.get(k, 0)) for k in _SLICE_ORDER]
