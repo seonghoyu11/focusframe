@@ -1,0 +1,49 @@
+name: ML Client CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'machine-learning-client/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'machine-learning-client/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./machine-learning-client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies for OpenCV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+
+      - name: Install pipenv
+        run: pip install pipenv
+
+      - name: Install Python dependencies
+        run: pipenv install --dev
+
+      - name: Run Black formatter check
+        run: pipenv run black --check .
+
+      - name: Run Pylint
+        run: pipenv run pylint *.py tests/
+
+      - name: Run Pytest with Coverage
+        run: pipenv run pytest --cov=. --cov-fail-under=80
