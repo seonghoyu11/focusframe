@@ -2,27 +2,27 @@
 
 import base64
 import io
+
 import matplotlib
-import matplotlib.pyplot as plt
 
-matplotlib.use("Agg")
+matplotlib.use("Agg")  # must come before pyplot import; headless Docker
 
-_SLICE_ORDER = ("focused", "distracted", "absent")
+import matplotlib.pyplot as plt  # pylint: disable=wrong-import-position
+
+_SLICE_ORDER = ("focused", "distracted")
 _COLORS = {
     "focused": "#10b981",
     "distracted": "#f59e0b",
-    "absent": "#ef4444",
 }
 _LABELS = {
     "focused": "Focused",
     "distracted": "Distracted",
-    "absent": "Absent",
 }
 _TEXT_COLOR = "#f8fafc"
 
 
 def generate_focus_chart(totals):
-    """function to generate matplotlib charts"""
+    """Render a donut chart of focused vs distracted time as a base64 PNG."""
     values = [int(totals.get(k, 0)) for k in _SLICE_ORDER]
     if sum(values) == 0:
         return None
@@ -54,7 +54,7 @@ def generate_focus_chart(totals):
         labels,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.05),
-        ncol=3,
+        ncol=2,
         frameon=False,
         fontsize=10,
     )

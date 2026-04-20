@@ -1,67 +1,167 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
-{% block extra_head %}
-    {% if active_session %}
-        <meta http-equiv="refresh" content="1">
-    {% endif %}
-{% endblock %}
 {% block content %}
-<head>
-    <meta http-equiv="refresh" content="1">
-</head>
-    <h1>FocusFrame Dashboard</h1>
+    <div class="dashboard-wrap">
     {% if active_session %}
-        {% if distraction_message %}
-            <div class="alert">
-                {{distraction_message}}
+        <div id="notification-banner" class="notification-banner {% if not distraction_message %}hidden{% endif %}">
+            <span class="notification-icon">⚠</span>
+            <span id="notification-text">{{ distraction_message or '' }}</span>
+        </div>
+
+        <div class="pomodoro-card">
+            <div class="phase-label" id="phase-label">{{mode}} Phase</div>
+            <div class="timer-display" id="timer-display">{{time_left}}</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: {{progress}}%;"></div>
             </div>
-        {% endif %}
-        <div class="card">
-            <h1>{{mode}} Phase</h1>
-            <p>{{time_left}}</p>
+            <div class="progress-label" id="progress-label">{{progress}}% complete</div>
         </div>
-        <div class="card">
-            <h1>Live Stats</h1>
-            <p>Focused:{{focused_time}}</p>
-            <p>Distracted:{{distracted_time}}</p>
-            <p>Absent: {{absent_time}}</p>
+
+        <div class="dashboard-grid">
+            <div class="camera-card">
+                <div class="card-title">Camera</div>
+                <video id="webcam" autoplay playsinline muted></video>
+                <div class="capture-status" id="capture-status">Initializing camera...</div>
+            </div>
+
+            <div class="stats-card">
+                <div class="card-title">Live Stats</div>
+                <div class="stat-row focused">
+                    <span class="stat-label">Focused</span>
+                    <span class="stat-value" id="stat-focused">{{focused_time}}s</span>
+                </div>
+                <div class="stat-row distracted">
+                    <span class="stat-label">Distracted</span>
+                    <span class="stat-value" id="stat-distracted">{{distracted_time}}s</span>
+                </div>
+            </div>
         </div>
-        <div class="progress-bar">
-              <div class="progress-fill" style="width: {{progress}}%;"></div>
-        </div>
-        <p>{{progress}}% complete</p>
-        <form action="/session/stop" method="post">
-            <button type="submit">Stop Session</button>
+
+        <form action="/session/stop" method="post" class="stop-form">
+            <button type="submit" class="btn-stop">Stop Session</button>
         </form>
+
+        <script>
+        (function() {
+            const video = document.getElementById('webcam');
+            const status = document.getElementById('capture-status');
+            const CAPTURE_INTERVAL_MS = {{capture_interval_ms}};
+            const POLL_INTERVAL_MS = 1000;
+
+            let canvas, captureTimer, pollTimer, stream;
+
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                .then(s => {
+                    stream = s;
+                    video.srcObject = s;
+                    status.textContent = 'Camera active. Capturing every ' + (CAPTURE_INTERVAL_MS/1000) + 's.';
+                    video.addEventListener('loadedmetadata', () => {
+                        canvas = document.createElement('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        captureTimer = setInterval(captureAndSend, CAPTURE_INTERVAL_MS);
+                        setTimeout(captureAndSend, 800);
+                    });
+                })
+                .catch(err => {
+                    status.textContent = 'Camera unavailable: ' + err.message;
+                    status.classList.add('error');
+                });
+
+            function captureAndSend() {
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(blob => {
+                    if (!blob) return;
+                    const form = new FormData();
+                    form.append('image', blob, 'snapshot.jpg');
+                    fetch('/session/snapshot', { method: 'POST', body: form })
+                        .catch(e => console.warn('Snapshot POST error:', e));
+                }, 'image/jpeg', 0.85);
+            }
+
+            function pollStats() {
+                fetch('/session/state')
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => {
+                        if (!data) return;
+                        if (!data.active) {
+                            window.location.reload();
+                            return;
+                        }
+                        document.getElementById('timer-display').textContent = data.timer;
+                        document.getElementById('phase-label').textContent = data.phase + ' Phase';
+                        document.getElementById('progress-fill').style.width = data.progress + '%';
+                        document.getElementById('progress-label').textContent = data.progress + '% complete';
+                        document.getElementById('stat-focused').textContent = data.focused_time + 's';
+                        document.getElementById('stat-distracted').textContent = data.distracted_time + 's';
+
+                        const banner = document.getElementById('notification-banner');
+                        const text = document.getElementById('notification-text');
+                        if (data.notification) {
+                            text.textContent = data.notification;
+                            banner.classList.remove('hidden');
+                        } else {
+                            banner.classList.add('hidden');
+                        }
+                    })
+                    .catch(e => console.warn('Poll error:', e));
+            }
+            pollTimer = setInterval(pollStats, POLL_INTERVAL_MS);
+
+            window.addEventListener('beforeunload', () => {
+                if (captureTimer) clearInterval(captureTimer);
+                if (pollTimer) clearInterval(pollTimer);
+                if (stream) stream.getTracks().forEach(t => t.stop());
+            });
+        })();
+        </script>
+
     {% else %}
-        <p>Welcome back, {{ username }}</p>
-        <form action="/session/start" method="post">
-            <button type="submit">Start Study Session</button>
-        </form>
-        <div class="card">
-            <h1>Study Stats</h1>
-            <p>
-                <a href="/dashboard?range=day">Day</a>
-                <a href="/dashboard?range=week">Week</a>
-                <a href="/dashboard?range=month">Month</a>
-                <a href="/dashboard?range=year">Year</a>
-            </p>
-            {% if chart %}
-                <img src="data:image/png;base64,{{ chart }}" alt="Study chart">
-            {% else %}
-                <p>No session data yet — start your first session to see charts.</p>
-            {% endif %}
-            <p>Focused: {{ focused_total }}</p>
-            <p>Distracted: {{ distracted_total }}</p>
-            <p>Focus Rate: {{ focus_rate }}%</p>
+        <div class="welcome-card">
+            <h1 class="welcome-title">Welcome back, {{ username }}</h1>
+            <p class="welcome-subtitle">Ready to focus? Start a study session below.</p>
+            <form action="/session/start" method="post">
+                <button type="submit" class="btn-start">Start Study Session</button>
+            </form>
         </div>
-        <div class="card">
-            <h1>Recent Sessions</h1>
-                {% for session in recent_sessions %}
-            <p>{{ session.date }} | {{ session.focus_rate }}%</p>
-                {% endfor %}
+
+        <div class="dashboard-grid">
+            <div class="summary-card">
+                <div class="card-title">Study Stats</div>
+                <div class="range-selector">
+                    <a href="/dashboard?range=day" class="range-link">Day</a>
+                    <a href="/dashboard?range=week" class="range-link">Week</a>
+                    <a href="/dashboard?range=month" class="range-link">Month</a>
+                    <a href="/dashboard?range=year" class="range-link">Year</a>
+                </div>
+                {% if chart %}
+                    <img src="data:image/png;base64,{{ chart }}" alt="Study chart" class="study-chart">
+                {% else %}
+                    <p class="empty-state">No session data yet — start your first session to see charts.</p>
+                {% endif %}
+                <div class="summary-totals">
+                    <div><span class="totals-label">Focused</span><span class="totals-value focused">{{ focused_total }}s</span></div>
+                    <div><span class="totals-label">Distracted</span><span class="totals-value distracted">{{ distracted_total }}s</span></div>
+                    <div><span class="totals-label">Focus Rate</span><span class="totals-value">{{ "%.0f"|format(focus_rate) }}%</span></div>
+                </div>
+            </div>
+
+            <div class="recent-card">
+                <div class="card-title">Recent Sessions</div>
+                {% if recent_sessions %}
+                    {% for session in recent_sessions %}
+                        <div class="recent-row">
+                            <span class="recent-date">{{ session.date }}</span>
+                            <span class="recent-rate">{{ "%.0f"|format(session.focus_rate) }}%</span>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty-state">No past sessions yet.</p>
+                {% endif %}
+            </div>
         </div>
     {% endif %}
+    </div>
 {% endblock %}
-
-

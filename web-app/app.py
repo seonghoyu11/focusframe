@@ -7,7 +7,15 @@ from collections import Counter
 
 from bson.objectid import ObjectId  # pylint: disable=import-error
 from dotenv import load_dotenv
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -50,19 +58,16 @@ except (ImportError, AttributeError):
                 self._offset = self._map.get(key, _tz.utc)
 
 
-# load .env
 load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
-# connect to MongoDB using db helper
 db = get_database()
 
 users_col = db[USERS_COLLECTION]
 sessions_col = db[SESSIONS_COLLECTION]
 snapshots_col = db[SNAPSHOTS_COLLECTION]
 
-# flask-login set up
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -70,7 +75,6 @@ login_manager.login_message = "Please log in to access that page."
 login_manager.login_message_category = "info"
 
 
-# user information
 class User(UserMixin):
     """User class for Flask-Login integration."""
 
@@ -112,28 +116,28 @@ def check_auth():
     return None
 
 
+def _capture_interval():
+    """Return the configured capture interval in seconds (int)."""
+    return int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
+
+
 def _calculate_stats(session_id):
     """Calculate per-session focus stats from snapshot counts."""
-    interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
+    interval = _capture_interval()
     focused_count = snapshots_col.count_documents(
         {"session_id": session_id, "classification": "focused"}
     )
     distracted_count = snapshots_col.count_documents(
         {"session_id": session_id, "classification": "distracted"}
     )
-    absent_count = snapshots_col.count_documents(
-        {"session_id": session_id, "classification": "absent"}
-    )
-    total_time = (focused_count + distracted_count + absent_count) * interval
+    total_time = (focused_count + distracted_count) * interval
     focused_time = focused_count * interval
     distracted_time = distracted_count * interval
-    absent_time = absent_count * interval
     rate = (focused_time / total_time * 100) if total_time > 0 else 0
     distract_rate = (distracted_time / total_time * 100) if total_time > 0 else 0
     return {
         "focused_time": focused_time,
         "distracted_time": distracted_time,
-        "absent_time": absent_time,
         "total_time": total_time,
         "focus_rate": rate,
         "distract_rate": distract_rate,
@@ -142,7 +146,7 @@ def _calculate_stats(session_id):
 
 def _compute_session_totals(session_id):
     """Aggregate snapshot classifications into seconds-per-bucket."""
-    interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
+    interval = _capture_interval()
     pipeline = [
         {"$match": {"session_id": session_id}},
         {"$group": {"_id": "$classification", "count": {"$sum": 1}}},
@@ -152,18 +156,12 @@ def _compute_session_totals(session_id):
     return {
         "total_focused_seconds": counts.get("focused", 0) * interval,
         "total_distracted_seconds": counts.get("distracted", 0) * interval,
-        "total_absent_seconds": counts.get("absent", 0) * interval,
         "snapshot_count": total,
     }
 
 
 def get_recent_notification(active_session, max_age_seconds=30):
-    """Return the session's notification dict if recent, else None.
-
-    Issue #58 — web app reads the distraction flag set by the ML client.
-    Notifications older than ``max_age_seconds`` are treated as stale so
-    the banner clears automatically on the next page refresh (1s per #56).
-    """
+    """Return the session's notification dict if recent, else None."""
     if not active_session:
         return None
     notif = active_session.get("notification")
@@ -173,6 +171,32 @@ def get_recent_notification(active_session, max_age_seconds=30):
     if age > max_age_seconds:
         return None
     return notif
+
+
+def _pomodoro_state(active_session):
+    """Compute the current Pomodoro phase, timer, and progress from a session doc."""
+    pom_start = active_session.get("pomodoro_phase_start", active_session["start_time"])
+    cycle = active_session.get("pomodoro_cycle", 1)
+    elapsed = (datetime.datetime.utcnow() - pom_start).total_seconds()
+    current_phase = active_session.get("pomodoro_phase", "work")
+    phase_total = 25 * 60 if current_phase == "work" else 5 * 60
+    rem = max(0, phase_total - elapsed)
+    if rem == 0:
+        if current_phase == "work":
+            current_phase = "break"
+            phase_total = 5 * 60
+        else:
+            current_phase = "work"
+            cycle += 1
+            phase_total = 25 * 60
+        rem = phase_total
+    progress = int((1 - rem / phase_total) * 100) if phase_total > 0 else 0
+    return {
+        "phase": current_phase.upper(),
+        "timer": f"{int(rem // 60):02d}:{int(rem % 60):02d}",
+        "cycle": cycle,
+        "progress": progress,
+    }
 
 
 @app.route("/")
@@ -200,29 +224,7 @@ def dashboard():  # pylint: disable=too-many-locals,too-many-statements
     stats = None
     if active_session:
         stats = _calculate_stats(active_session["_id"])
-        pom_start = active_session.get(
-            "pomodoro_phase_start", active_session["start_time"]
-        )
-        cycle = active_session.get("pomodoro_cycle", 1)
-        delta = datetime.datetime.utcnow() - pom_start
-        elapsed = delta.total_seconds()
-        current_phase = active_session.get("pomodoro_phase", "work")
-        if current_phase == "work":
-            rem = max(0, (25 * 60) - elapsed)
-            if rem == 0:
-                current_phase = "break"
-                rem = 25 * 60
-        else:
-            rem = max(0, (5 * 60) - elapsed)
-            if rem == 0:
-                current_phase = "work"
-                cycle += 1
-                rem = 25 * 60
-        pomodoro = {
-            "phase": current_phase.upper(),
-            "timer": f"{int(rem // 60):02d}:{int(rem % 60):02d}",
-            "cycle": cycle,
-        }
+        pomodoro = _pomodoro_state(active_session)
     elif past_sessions:
         stats = _calculate_stats(past_sessions[0]["_id"])
 
@@ -237,31 +239,30 @@ def dashboard():  # pylint: disable=too-many-locals,too-many-statements
                 "focus_rate": ps["stats"]["focus_rate"],
             }
         )
-        focused_total = focused_total + ps["stats"]["focused_time"]
-        distracted_total = distracted_total + ps["stats"]["distracted_time"]
+        focused_total += ps["stats"]["focused_time"]
+        distracted_total += ps["stats"]["distracted_time"]
 
     if stats is not None:
         focused_time = stats["focused_time"]
         distracted_time = stats["distracted_time"]
-        absent_time = stats["absent_time"]
         focus_rate = stats["focus_rate"]
     else:
         focused_time = 0
         distracted_time = 0
-        absent_time = 0
         focus_rate = 0
 
     if pomodoro is not None:
         mode = pomodoro["phase"]
         time_left = pomodoro["timer"]
+        progress = pomodoro["progress"]
     else:
         mode = None
         time_left = None
+        progress = 0
 
     chart_totals = {
         "focused": focused_time if active_session else focused_total,
         "distracted": distracted_time if active_session else distracted_total,
-        "absent": absent_time if active_session else 0,
     }
     chart_b64 = generate_focus_chart(chart_totals)
 
@@ -274,7 +275,6 @@ def dashboard():  # pylint: disable=too-many-locals,too-many-statements
         username=current_user.username,
         distraction_message=distraction_message,
         focused_time=focused_time,
-        absent_time=absent_time,
         distracted_time=distracted_time,
         time_left=time_left,
         mode=mode,
@@ -282,8 +282,35 @@ def dashboard():  # pylint: disable=too-many-locals,too-many-statements
         focus_rate=focus_rate,
         focused_total=focused_total,
         distracted_total=distracted_total,
-        progress=0,
+        progress=progress,
         chart=chart_b64,
+        capture_interval_ms=_capture_interval() * 1000,
+    )
+
+
+@app.route("/session/state")
+@login_required
+def session_state():
+    """Return live session state as JSON for the dashboard polling loop."""
+    user_id = current_user.get_id()
+    active = sessions_col.find_one({"user_id": user_id, "status": "active"})
+    if not active:
+        return jsonify({"active": False})
+
+    stats = _calculate_stats(active["_id"])
+    pomodoro = _pomodoro_state(active)
+    notif = get_recent_notification(active)
+
+    return jsonify(
+        {
+            "active": True,
+            "phase": pomodoro["phase"],
+            "timer": pomodoro["timer"],
+            "progress": pomodoro["progress"],
+            "focused_time": stats["focused_time"],
+            "distracted_time": stats["distracted_time"],
+            "notification": notif["message"] if notif else None,
+        }
     )
 
 
@@ -309,7 +336,6 @@ def start_session():
         "pomodoro_cycle": 1,
         "total_focused_seconds": 0,
         "total_distracted_seconds": 0,
-        "total_absent_seconds": 0,
         "snapshot_count": 0,
         "notification": None,
     }
@@ -344,6 +370,41 @@ def stop_session():
     )
     flash("Study session stopped.", "info")
     return redirect(url_for("dashboard"))
+
+
+@app.route("/session/snapshot", methods=["POST"])
+@login_required
+def receive_snapshot():
+    """Receive a captured frame from the browser and queue it for analysis."""
+    user_id = current_user.get_id()
+    active = sessions_col.find_one({"user_id": user_id, "status": "active"})
+    if not active:
+        return ("No active session", 400)
+
+    image_file = request.files.get("image")
+    if not image_file:
+        return ("Missing image", 400)
+    image_bytes = image_file.read()
+    if not image_bytes:
+        return ("Empty image", 400)
+
+    snapshots_col.insert_one(
+        {
+            "user_id": user_id,
+            "session_id": active["_id"],
+            "timestamp": datetime.datetime.utcnow(),
+            "image": image_bytes,
+            "emotion": None,
+            "confidence": None,
+            "classification": None,
+            "analyzed": False,
+        }
+    )
+    sessions_col.update_one(
+        {"_id": active["_id"]},
+        {"$inc": {"snapshot_count": 1}},
+    )
+    return ("", 204)
 
 
 @app.route("/signup", methods=["GET", "POST"])

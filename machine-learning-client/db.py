@@ -34,12 +34,7 @@ def save_record(record):
 
 def set_session_notification(session_id, classification):
     """Set the notification field on a session document."""
-    messages = {
-        "distracted": "You seem distracted! Get back to studying.",
-        "absent": "We lost sight of you — come back to finish your session.",
-    }
-    message = messages.get(classification)
-    if message is None:
+    if classification != "distracted":
         return
 
     sessions = get_collection(SESSIONS_COLLECTION)
@@ -48,8 +43,8 @@ def set_session_notification(session_id, classification):
         {
             "$set": {
                 "notification": {
-                    "type": classification,
-                    "message": message,
+                    "type": "distracted",
+                    "message": "You seem distracted! Refocus on your work.",
                     "timestamp": datetime.datetime.now(datetime.timezone.utc),
                 }
             }

@@ -4,6 +4,8 @@ services:
     container_name: mongodb
     ports:
       - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
     networks:
       - app-network
 
@@ -16,7 +18,7 @@ services:
     environment:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DBNAME=${MONGO_DBNAME}
-      - CAPTURE_INTERVAL_SECONDS=${CAPTURE_INTERVAL_SECONDS}
+      - ANALYSIS_INTERVAL_SECONDS=${ANALYSIS_INTERVAL_SECONDS:-3}
     networks:
       - app-network
 
@@ -32,8 +34,12 @@ services:
       - MONGO_URI=${MONGO_URI}
       - MONGO_DBNAME=${MONGO_DBNAME}
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - CAPTURE_INTERVAL_SECONDS=${CAPTURE_INTERVAL_SECONDS:-10}
     networks:
       - app-network
+
+volumes:
+  mongodb_data:
 
 networks:
   app-network:

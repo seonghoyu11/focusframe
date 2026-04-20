@@ -4,10 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-fer = "*"
-setuptools = "<70.0.0"
-pymongo = {extras = ["srv"], version = "*"}
+pymongo = "*"
 python-dotenv = "*"
+opencv-python-headless = "*"
+fer = "*"
+tensorflow = "*"
+numpy = "*"
 
 [dev-packages]
 pylint = "*"

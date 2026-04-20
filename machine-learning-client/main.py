@@ -1,122 +1,117 @@
-"""ML client for FocusFrame study monitoring."""
+"""ML client for FocusFrame — analysis worker.
+
+Classification is simple:
+    neutral face -> "focused"
+    anything else -> "distracted"
+"""
 
 import datetime
 import os
 import time
 
 import cv2  # pylint: disable=import-error
+import numpy as np  # pylint: disable=import-error
 from dotenv import load_dotenv
 from fer.fer import FER  # pylint: disable=import-error
 
 from db import (
     SESSIONS_COLLECTION,
+    SNAPSHOTS_COLLECTION,
     get_collection,
-    save_snapshot,
     set_session_notification,
 )
 
 load_dotenv()
 
+_DETECTOR = None
 
-def get_face_emotion():
-    """Capture a frame and return image data with top emotion."""
-    detector = FER(mtcnn=False)
-    cap = cv2.VideoCapture(0)  # pylint: disable=no-member
-    img_data = None
 
-    if cap.isOpened():
-        time.sleep(3)
-        ret, cap_frame = cap.read()
-        cap.release()
-        if ret:
-            img_data = cap_frame
-    else:
-        # when there is an error, use a fallback image
-        fallback_path = os.path.join(os.getcwd(), "img.png")
-        if os.path.exists(fallback_path):
-            img_data = cv2.imread(fallback_path)  # pylint: disable=no-member
+def get_detector():
+    """Return a shared FER instance, loaded on first use."""
+    global _DETECTOR  # pylint: disable=global-statement
+    if _DETECTOR is None:
+        _DETECTOR = FER(mtcnn=False)
+    return _DETECTOR
 
-    if img_data is not None:
-        detector.detect_emotions(img_data)
-        result = detector.top_emotion(img_data)
-        return img_data, result
-    return None, None
+
+def analyze_image_bytes(image_bytes):
+    """Decode JPEG bytes, run FER, return (emotion, score).
+
+    Returns (None, None) if decoding fails or no face is detected.
+    """
+    if not image_bytes:
+        return None, None
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # pylint: disable=no-member
+    if img is None:
+        return None, None
+    result = get_detector().top_emotion(img)
+    if result is None:
+        return None, None
+    return result
 
 
 def distraction_classification(data):
-    """Classifies distraction based on emotion data."""
-    if data is None:
-        return "absent"
-    emotion, _ = data
-    if emotion in ["happy", "neutral", "angry"]:
-        return "focused"
-    if emotion in ["sad", "fear", "disgust", "surprise"]:
-        return "distracted"
-    return "unknown"
+    """Classify a (emotion, score) tuple — or None — as focused or distracted.
 
-
-def store_data(img_frame, emotion, score, classification):
-    """Fetches the active session and stores the snapshot data in MongoDB.
-
-    Returns:
-        The ObjectId of the active session if storage succeeded, else None.
+    Only a neutral face counts as focused. Everything else — including
+    no face detected, happy, angry, sad, etc. — is distracted.
     """
-    sessions_col = get_collection(SESSIONS_COLLECTION)
-    active_session = sessions_col.find_one({"status": "active"})
+    if data is None or data[0] is None:
+        return "distracted"
+    emotion, _ = data
+    if emotion == "neutral":
+        return "focused"
+    return "distracted"
 
-    if not active_session:
-        print("No active focus session found. Skipping storage.")
-        return None
 
-    success, buffer = cv2.imencode(".jpg", img_frame)  # pylint: disable=no-member
-    if not success:
-        print("Failed to encode image. Skipping storage.")
-        return None
-    image_bytes = buffer.tobytes()
+def process_pending_snapshots(batch_size=20):
+    """Find unanalyzed snapshots, classify them, write results back."""
+    snapshots = get_collection(SNAPSHOTS_COLLECTION)
+    sessions = get_collection(SESSIONS_COLLECTION)
+    pending = snapshots.find({"analyzed": False}).limit(batch_size)
 
-    snapshot = {
-        "user_id": active_session.get("user_id"),
-        "session_id": active_session.get("_id"),
-        "timestamp": datetime.datetime.now(datetime.timezone.utc),
-        "emotion": emotion,
-        "confidence": score,
-        "classification": classification,
-        "image": image_bytes,
-    }
+    for snap in pending:
+        emotion_data = analyze_image_bytes(snap.get("image", b""))
+        classification = distraction_classification(emotion_data)
+        emotion = emotion_data[0] if emotion_data and emotion_data[0] else None
+        confidence = emotion_data[1] if emotion_data and emotion_data[1] else 0.0
 
-    save_snapshot(snapshot)
-    sessions_col.update_one(
-        {"_id": active_session["_id"]},
-        {"$inc": {"snapshot_count": 1}},
-    )
-    print(f"Snapshot stored successfully for session {active_session['_id']}")
-    return active_session["_id"]
+        snapshots.update_one(
+            {"_id": snap["_id"]},
+            {
+                "$set": {
+                    "emotion": emotion,
+                    "confidence": confidence,
+                    "classification": classification,
+                    "analyzed": True,
+                    "analyzed_at": datetime.datetime.now(datetime.timezone.utc),
+                }
+            },
+        )
+        print(
+            f"Analyzed snapshot {snap['_id']}: {classification} "
+            f"(emotion={emotion}, conf={confidence})"
+        )
+
+        # Only flag the session if it's still active.
+        if classification == "distracted":
+            is_active = sessions.find_one(
+                {"_id": snap["session_id"], "status": "active"}
+            )
+            if is_active:
+                set_session_notification(snap["session_id"], classification)
 
 
 def run_loop():
-    """Main capture + analyze + store loop."""
-    print("FocusFrame ML Client starting...")
+    """Poll for unanalyzed snapshots forever."""
+    print("FocusFrame ML Client (analysis worker) starting...")
+    interval = int(os.getenv("ANALYSIS_INTERVAL_SECONDS", "3"))
     while True:
-        frame, emotion_data = get_face_emotion()
-
-        if frame is not None:
-            if emotion_data is not None:
-                emo, conf = emotion_data
-                classification = distraction_classification(emotion_data)
-            else:
-                # Camera worked but FER found no face -> student is absent.
-                emo, conf = None, 0.0
-                classification = "absent"
-
-            print(f"Classification: {classification} (emotion={emo}, conf={conf})")
-            session_id = store_data(frame, emo, conf, classification)
-
-            if session_id is not None and classification in ("distracted", "absent"):
-                set_session_notification(session_id, classification)
-        else:
-            print("No image captured (camera unavailable).")
-
-        interval = int(os.getenv("CAPTURE_INTERVAL_SECONDS", "10"))
+        try:
+            process_pending_snapshots()
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            print(f"Error during analysis pass: {err}")
         time.sleep(interval)
 
 

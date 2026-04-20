@@ -2,27 +2,30 @@
 
 # pylint: disable=redefined-outer-name,import-error,import-outside-toplevel
 import datetime
+import io
+
 from werkzeug.security import generate_password_hash
 
 
 def test_index_unauthenticated(client):
-    """Test that the index page is accessible and shows login."""
+    """The index page renders the login view for anonymous users."""
     response = client.get("/")
     assert response.status_code == 200
     assert b"Sign In" in response.data or b"Welcome Back" in response.data
 
 
 def test_signup_get(client):
-    """Test that the signup page is accessible."""
+    """The signup page is reachable and shows the form."""
     response = client.get("/signup")
     assert response.status_code == 200
     assert b"Create Account" in response.data
 
 
 def test_signup_post_valid(client):
-    """Test signing up with valid data."""
-    # pylint: disable=import-outside-toplevel,import-error
+    """Signing up with valid data creates a user and logs them in."""
     from app import users_col
+
+    users_col.delete_many({"username": "newuser"})
 
     data = {
         "username": "newuser",
@@ -37,7 +40,11 @@ def test_signup_post_valid(client):
 
 
 def test_signup_post_mismatch_password(client):
-    """Test signing up with mismatched passwords."""
+    """Mismatched passwords surface an error and no user is created."""
+    from app import users_col
+
+    users_col.delete_many({"username": "baduser"})
+
     data = {
         "username": "baduser",
         "email": "bad@example.com",
@@ -46,13 +53,14 @@ def test_signup_post_mismatch_password(client):
     }
     response = client.post("/signup", data=data, follow_redirects=True)
     assert b"Passwords do not match" in response.data
+    assert users_col.find_one({"username": "baduser"}) is None
 
 
 def test_login_post_invalid(client):
-    """Test login with invalid credentials."""
-    # pylint: disable=import-outside-toplevel,import-error
+    """Login rejects wrong passwords."""
     from app import users_col
 
+    users_col.delete_many({"username": "loginuser"})
     users_col.insert_one(
         {"username": "loginuser", "password_hash": generate_password_hash("realpass")}
     )
@@ -66,10 +74,10 @@ def test_login_post_invalid(client):
 
 
 def test_login_post_valid(client):
-    """Test login with valid credentials."""
-    # pylint: disable=import-outside-toplevel,import-error
+    """Login accepts the correct password and greets the user."""
     from app import users_col
 
+    users_col.delete_many({"username": "valuser"})
     users_col.insert_one(
         {"username": "valuser", "password_hash": generate_password_hash("valpass")}
     )
@@ -83,23 +91,18 @@ def test_login_post_valid(client):
     assert response.status_code == 200
 
 
-def test_dashboard_authenticated(
-    authenticated_client,
-):  # pylint: disable=redefined-outer-name
-    """Test that the dashboard is accessible for authenticated users."""
+def test_dashboard_authenticated(authenticated_client):
+    """The dashboard renders for a logged-in user."""
     response = authenticated_client.get("/dashboard")
     assert response.status_code == 200
     assert b"testuser" in response.data
-    assert b"Focused" in response.data
 
 
-def test_dashboard_with_active_session(
-    authenticated_client,
-):  # pylint: disable=redefined-outer-name
-    """Test dashboard display when there is an active session."""
-    # pylint: disable=import-outside-toplevel,import-error
-    from app import users_col, sessions_col
+def test_dashboard_with_active_session(authenticated_client):
+    """Dashboard shows Stop Session button when a session is active."""
+    from app import sessions_col, users_col
 
+    sessions_col.delete_many({})
     user = users_col.find_one({"username": "testuser"})
     sessions_col.insert_one(
         {
@@ -117,9 +120,8 @@ def test_dashboard_with_active_session(
     assert b"Stop Session" in response.data
 
 
-def test_start_session(authenticated_client):  # pylint: disable=redefined-outer-name
-    """Test starting a new session."""
-    # pylint: disable=import-outside-toplevel,import-error
+def test_start_session(authenticated_client):
+    """Posting to /session/start creates a fresh active session."""
     from app import sessions_col
 
     sessions_col.delete_many({})
@@ -128,11 +130,11 @@ def test_start_session(authenticated_client):  # pylint: disable=redefined-outer
     assert sessions_col.find_one({"status": "active"}) is not None
 
 
-def test_stop_session(authenticated_client):  # pylint: disable=redefined-outer-name
-    """Test stopping an active session."""
-    # pylint: disable=import-outside-toplevel,import-error
-    from app import users_col, sessions_col
+def test_stop_session(authenticated_client):
+    """Posting to /session/stop marks the active session completed."""
+    from app import sessions_col, users_col
 
+    sessions_col.delete_many({})
     user = users_col.find_one({"username": "testuser"})
     sessions_col.insert_one(
         {
@@ -150,11 +152,11 @@ def test_stop_session(authenticated_client):  # pylint: disable=redefined-outer-
     )
 
 
-def test_history_page(authenticated_client):  # pylint: disable=redefined-outer-name
-    """Test the history page retrieval."""
-    # pylint: disable=import-outside-toplevel,import-error
-    from app import users_col, sessions_col
+def test_history_page(authenticated_client):
+    """History page shows past completed sessions."""
+    from app import sessions_col, users_col
 
+    sessions_col.delete_many({})
     user = users_col.find_one({"username": "testuser"})
     sessions_col.insert_one(
         {
@@ -170,13 +172,12 @@ def test_history_page(authenticated_client):  # pylint: disable=redefined-outer-
     assert b"Session History" in response.data
 
 
-def test_session_detail_page(
-    authenticated_client,
-):  # pylint: disable=redefined-outer-name
-    """Test the session detail page."""
-    # pylint: disable=import-outside-toplevel,import-error
-    from app import users_col, sessions_col, snapshots_col
+def test_session_detail_page(authenticated_client):
+    """Session detail page renders for a valid session id."""
+    from app import sessions_col, snapshots_col, users_col
 
+    sessions_col.delete_many({})
+    snapshots_col.delete_many({})
     user = users_col.find_one({"username": "testuser"})
     sess_id = sessions_col.insert_one(
         {
@@ -191,7 +192,7 @@ def test_session_detail_page(
             "session_id": sess_id,
             "classification": "focused",
             "timestamp": datetime.datetime.utcnow(),
-            "emotion": "happy",
+            "emotion": "neutral",
             "image": b"fake_image_data",
         }
     )
@@ -202,13 +203,12 @@ def test_session_detail_page(
     assert b"focused" in response.data.lower()
 
 
-def test_dashboard_stats_logic(
-    authenticated_client,
-):  # pylint: disable=redefined-outer-name
-    """Verify that the dashboard correctly calculates study statistics (Coverage boost)."""
-    # pylint: disable=import-outside-toplevel,import-error
-    from app import users_col, sessions_col, snapshots_col
+def test_dashboard_stats_two_class(authenticated_client):
+    """Dashboard stats compute correctly"""
+    from app import sessions_col, snapshots_col, users_col
 
+    sessions_col.delete_many({})
+    snapshots_col.delete_many({})
     user = users_col.find_one({"username": "testuser"})
     sess_id = sessions_col.insert_one(
         {
@@ -218,44 +218,130 @@ def test_dashboard_stats_logic(
         }
     ).inserted_id
 
-    # Add 2 focused snapshots, 1 distracted, 1 absent
-    # Each snapshot represents 10 seconds in the current math logic
-    snapshots_col.insert_one(
-        {
-            "session_id": sess_id,
-            "classification": "focused",
-            "timestamp": datetime.datetime.utcnow(),
-        }
-    )
-    snapshots_col.insert_one(
-        {
-            "session_id": sess_id,
-            "classification": "focused",
-            "timestamp": datetime.datetime.utcnow(),
-        }
-    )
-    snapshots_col.insert_one(
-        {
-            "session_id": sess_id,
-            "classification": "distracted",
-            "timestamp": datetime.datetime.utcnow(),
-        }
-    )
-    snapshots_col.insert_one(
-        {
-            "session_id": sess_id,
-            "classification": "absent",
-            "timestamp": datetime.datetime.utcnow(),
-        }
-    )
+    for classification in ("focused", "focused", "distracted", "distracted"):
+        snapshots_col.insert_one(
+            {
+                "session_id": sess_id,
+                "classification": classification,
+                "timestamp": datetime.datetime.utcnow(),
+            }
+        )
 
     response = authenticated_client.get("/dashboard")
     assert response.status_code == 200
-    # 2 focused out of 4 total = 50%
-    assert b"50" in response.data or b"50.0" in response.data
+    # 50% focus rate should appear in the summary totals
+    assert b"50" in response.data
 
 
-def test_logout(authenticated_client):  # pylint: disable=redefined-outer-name
-    """Test logging out."""
+def test_session_state_no_active(authenticated_client):
+    """/session/state returns active=false when no session is running."""
+    from app import sessions_col
+
+    sessions_col.delete_many({})
+    response = authenticated_client.get("/session/state")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["active"] is False
+
+
+def test_session_state_active(authenticated_client):
+    """/session/state returns live Pomodoro + stats fields for an active session."""
+    from app import sessions_col, snapshots_col, users_col
+
+    sessions_col.delete_many({})
+    snapshots_col.delete_many({})
+    user = users_col.find_one({"username": "testuser"})
+    sess_id = sessions_col.insert_one(
+        {
+            "user_id": str(user["_id"]),
+            "status": "active",
+            "start_time": datetime.datetime.utcnow(),
+            "pomodoro_phase": "work",
+            "pomodoro_phase_start": datetime.datetime.utcnow(),
+            "pomodoro_cycle": 1,
+        }
+    ).inserted_id
+    snapshots_col.insert_one(
+        {
+            "session_id": sess_id,
+            "classification": "focused",
+            "timestamp": datetime.datetime.utcnow(),
+        }
+    )
+
+    response = authenticated_client.get("/session/state")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["active"] is True
+    assert data["phase"] == "WORK"
+    assert "timer" in data
+    assert "progress" in data
+    assert data["focused_time"] == 10
+    assert data["distracted_time"] == 0
+
+
+def test_snapshot_upload_no_session(authenticated_client):
+    """/session/snapshot returns 400 when no active session exists."""
+    from app import sessions_col
+
+    sessions_col.delete_many({})
+    response = authenticated_client.post(
+        "/session/snapshot",
+        data={"image": (io.BytesIO(b"fake_jpeg_bytes"), "snap.jpg")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 400
+
+
+def test_snapshot_upload_success(authenticated_client):
+    """/session/snapshot accepts an upload and writes an unanalyzed snapshot."""
+    from app import sessions_col, snapshots_col, users_col
+
+    sessions_col.delete_many({})
+    snapshots_col.delete_many({})
+    user = users_col.find_one({"username": "testuser"})
+    sess_id = sessions_col.insert_one(
+        {
+            "user_id": str(user["_id"]),
+            "status": "active",
+            "start_time": datetime.datetime.utcnow(),
+            "snapshot_count": 0,
+        }
+    ).inserted_id
+
+    response = authenticated_client.post(
+        "/session/snapshot",
+        data={"image": (io.BytesIO(b"fake_jpeg_bytes"), "snap.jpg")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 204
+
+    stored = snapshots_col.find_one({"session_id": sess_id})
+    assert stored is not None
+    assert stored["analyzed"] is False
+    assert stored["classification"] is None
+    assert stored["image"] == b"fake_jpeg_bytes"
+
+
+def test_snapshot_upload_missing_image(authenticated_client):
+    """/session/snapshot returns 400 when no image file is provided."""
+    from app import sessions_col, users_col
+
+    sessions_col.delete_many({})
+    user = users_col.find_one({"username": "testuser"})
+    sessions_col.insert_one(
+        {
+            "user_id": str(user["_id"]),
+            "status": "active",
+            "start_time": datetime.datetime.utcnow(),
+        }
+    )
+
+    response = authenticated_client.post("/session/snapshot", data={})
+    assert response.status_code == 400
+
+
+def test_logout(authenticated_client):
+    """Logout clears the session and redirects to the login landing."""
     response = authenticated_client.get("/logout", follow_redirects=True)
     assert b"Welcome Back" in response.data or b"Sign In" in response.data
