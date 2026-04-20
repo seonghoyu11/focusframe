@@ -1,9 +1,10 @@
 # FocusFrame
+
 [![Web App CI](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/web-app.yml/badge.svg)](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/web-app.yml)
 [![ML Client CI](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/ml-client.yml/badge.svg)](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/ml-client.yml)
 [![Lint](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/lint.yml/badge.svg)](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/lint.yml)
 
-This project is a containerized multiservice study-focus application. A user interacts with the Flask web application, the machine-learning client captures webcam frames and classifies them using facial emotion recognition, and session metadata plus snapshots are stored in MongoDB. A built-in Pomodoro timer and live distraction alerts run server-side, with the dashboard auto-refreshing every second while a session is active.
+FocusFrame is a containerized multi-service study-focus application. While a study session is running, the user's browser captures webcam frames every few seconds and posts them to the Flask web app. A separate machine-learning client polls MongoDB for unanalyzed frames, runs facial-expression recognition on each, and writes the focused/distracted classification back. The dashboard shows a live video preview, a Pomodoro timer, running per-session stats, and a distraction banner that fires whenever the user looks away or shows a non-neutral expression.
 
 ## Team
 
@@ -19,14 +20,15 @@ This project is a containerized multiservice study-focus application. A user int
 
 ## Project Parts
 
-1. `web-app/` — The Flask frontend and browser-facing routes. Handles user authentication, session start/stop controls, the Pomodoro timer, and the dashboard with server-side-rendered matplotlib charts.
-2. `machine-learning-client/` — The background service that polls the database for active sessions, captures frames with OpenCV, classifies focus state using a local FER (facial expression recognition) model, and writes snapshots plus distraction notifications back to the database.
-3. `mongodb` — The database container used by both services to store users (`users` collection), study sessions (`sessions` collection), and per-frame analysis results (`snapshots` collection).
+1. `web-app/` — Flask frontend. Handles auth, session start/stop controls, the Pomodoro timer, receives browser frame uploads, exposes a JSON state endpoint for live polling, and renders the history + session detail views with server-side matplotlib charts.
+2. `machine-learning-client/` — Background analysis worker. Polls MongoDB for unanalyzed snapshots, runs FER, writes classifications back, and sets per-session distraction notifications.
+3. `mongodb` — Local database container used by both services.
 
 ## Prerequisites
 
 - **Docker Desktop**
-- **A webcam** accessible to the ML client container
+- **A webcam** in the machine running the browser (the container does not need webcam access)
+- **A modern browser** (Chrome, Firefox, Safari, or Edge) for `getUserMedia` support
 
 ## Setup
 
@@ -38,39 +40,40 @@ git clone https://github.com/swe-students-spring2026/4-containers-terminal_titan
 
 ### 2. Configure environment variables
 
-Copy the example environment file:
+Copy the example environment file and edit as needed:
 
 ```
 cp .env.example .env
 ```
 
-Edit `.env` with your actual values — analysis is local, so no external API keys are required:
+At minimum, set `FLASK_SECRET_KEY` to a long random string. Everything else has sensible defaults.
 
 ```
 MONGO_URI=mongodb://mongodb:27017/
 MONGO_DBNAME=focusframe
 FLASK_SECRET_KEY=change-me-to-a-long-random-string
 CAPTURE_INTERVAL_SECONDS=10
+ANALYSIS_INTERVAL_SECONDS=3
 ```
 
-### 3. Initialize the database (first run only)
-
-```
-docker compose up -d mongodb
-docker compose run --rm machine-learning-client python init_db.py
-```
-
-This creates the three collections and their indexes. The command is idempotent — rerunning it on an initialized database is safe.
-
-### 4. Start all containers
-
-Build and start the application:
+### 3. Build and start all containers
 
 ```
 docker compose up -d --build
 ```
 
-The web application will be available at **http://localhost:3000**.
+First-time builds take 10–20 minutes because of TensorFlow. Subsequent rebuilds use cached layers and take seconds.
+
+The web app will be available at **http://localhost:3000**.
+
+### 4. Initialize the database (first run only)
+
+```
+docker compose exec machine-learning-client python init_db.py
+docker compose exec mongodb mongosh focusframe --quiet --eval "db.snapshots.createIndex({analyzed: 1})"
+```
+
+Both commands are idempotent — safe to rerun.
 
 ### 5. Stop the system
 
@@ -78,7 +81,7 @@ The web application will be available at **http://localhost:3000**.
 docker compose down
 ```
 
-To also remove stored database data:
+To also wipe all stored users, sessions, and snapshots:
 
 ```
 docker compose down -v
@@ -86,13 +89,14 @@ docker compose down -v
 
 ## Usage
 
-1. Open **http://localhost:3000** in your browser.
+1. Open **http://localhost:3000**.
 2. Create an account or log in.
-3. Click **Start Study Session** to begin. The dashboard will enter its active state, showing the Pomodoro timer and live stats, refreshing every second.
-4. The background ML client will capture a frame every `CAPTURE_INTERVAL_SECONDS` seconds, classify your focus state, and store a snapshot.
-5. If you appear distracted or step away, a banner will surface on the dashboard on the next refresh.
-6. Click **Stop Session** to end. Your totals (focused / distracted / absent time) are computed from the snapshots and written back to the session record.
-7. View past sessions under **History**, or drill into a single session to see the full snapshot timeline.
+3. Click **Start Study Session**. The browser will prompt for camera permission — allow it.
+4. A live preview of your webcam appears on the dashboard. Every `CAPTURE_INTERVAL_SECONDS`, the browser silently captures a JPEG and uploads it to the web app.
+5. The ML client analyzes each frame within a few seconds and writes the classification back. The stats card updates in real time.
+6. If you look away or change expression away from neutral, a distraction banner appears. It clears automatically after ~30 seconds without further distraction.
+7. Click **Stop Session** to end. Per-session totals are computed from the snapshots and written back to the session record.
+8. Visit **History** to see past sessions, or click into a single session for the full snapshot timeline.
 
 ## Environment Variables
 
@@ -100,8 +104,10 @@ docker compose down -v
 |---|---|---|
 | `MONGO_URI` | MongoDB connection string | `mongodb://mongodb:27017/` |
 | `MONGO_DBNAME` | MongoDB database name | `focusframe` |
-| `FLASK_SECRET_KEY` | Flask session cookie signing key | `change-me` |
-| `CAPTURE_INTERVAL_SECONDS` | Seconds between webcam captures; also the unit multiplier for stat aggregation | `10` |
+| `FLASK_SECRET_KEY` | Flask session cookie signing key | (no default; set in `.env`) |
+| `CAPTURE_INTERVAL_SECONDS` | How often the browser captures and uploads a frame | `10` |
+| `ANALYSIS_INTERVAL_SECONDS` | How often the ML client polls for unanalyzed frames | `3` |
+
 
 ## Running Tests
 
@@ -124,4 +130,3 @@ pipenv run pytest tests/ -v --cov=.
 ```
 
 The web-app CI workflow gates merges at ≥80% coverage.
-
