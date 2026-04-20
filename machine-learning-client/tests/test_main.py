@@ -70,7 +70,9 @@ def test_analyze_image_bytes_no_face(mock_get_detector, mock_imdecode):
 @patch("main.set_session_notification")
 @patch("main.analyze_image_bytes")
 @patch("main.get_collection")
-def test_process_pending_focused_does_not_notify(mock_get_col, mock_analyze, mock_set_notif):
+def test_process_pending_focused_does_not_notify(
+    mock_get_col, mock_analyze, mock_set_notif
+):
     """Focused classification updates the doc but does NOT set notification."""
     mock_analyze.return_value = ("neutral", 0.9)
     snaps = MagicMock()
@@ -96,7 +98,9 @@ def test_process_pending_focused_does_not_notify(mock_get_col, mock_analyze, moc
 @patch("main.set_session_notification")
 @patch("main.analyze_image_bytes")
 @patch("main.get_collection")
-def test_process_pending_distracted_sets_notification(mock_get_col, mock_analyze, mock_set_notif):
+def test_process_pending_distracted_sets_notification(
+    mock_get_col, mock_analyze, mock_set_notif
+):
     """Distracted classification triggers a session notification."""
     mock_analyze.return_value = ("sad", 0.8)
     snaps = MagicMock()
@@ -118,7 +122,9 @@ def test_process_pending_distracted_sets_notification(mock_get_col, mock_analyze
 @patch("main.set_session_notification")
 @patch("main.analyze_image_bytes")
 @patch("main.get_collection")
-def test_process_pending_no_face_sets_notification(mock_get_col, mock_analyze, mock_set_notif):
+def test_process_pending_no_face_sets_notification(
+    mock_get_col, mock_analyze, mock_set_notif
+):
     """No face detected -> distracted -> notification fires."""
     mock_analyze.return_value = (None, None)
     snaps = MagicMock()
@@ -140,7 +146,9 @@ def test_process_pending_no_face_sets_notification(mock_get_col, mock_analyze, m
 @patch("main.set_session_notification")
 @patch("main.analyze_image_bytes")
 @patch("main.get_collection")
-def test_process_pending_skips_notification_if_session_inactive(mock_get_col, mock_analyze, mock_set_notif):
+def test_process_pending_skips_notification_if_session_inactive(
+    mock_get_col, mock_analyze, mock_set_notif
+):
     """Distracted on a completed session does NOT set notification."""
     mock_analyze.return_value = ("sad", 0.8)
     snaps = MagicMock()

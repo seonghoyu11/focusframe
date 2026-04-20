@@ -204,7 +204,7 @@ def test_session_detail_page(authenticated_client):
 
 
 def test_dashboard_stats_two_class(authenticated_client):
-    """Dashboard stats compute correctly """
+    """Dashboard stats compute correctly"""
     from app import sessions_col, snapshots_col, users_col
 
     sessions_col.delete_many({})

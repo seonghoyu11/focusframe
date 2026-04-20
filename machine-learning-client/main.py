@@ -23,7 +23,7 @@ from db import (
 
 load_dotenv()
 
-_DETECTOR = None  
+_DETECTOR = None
 
 
 def get_detector():
