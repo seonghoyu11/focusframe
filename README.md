@@ -1,5 +1,4 @@
 # FocusFrame
-
 [![Web App CI](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/web-app.yml/badge.svg)](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/web-app.yml)
 [![ML Client CI](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/ml-client.yml/badge.svg)](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/ml-client.yml)
 [![Lint](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/lint.yml/badge.svg)](https://github.com/swe-students-spring2026/4-containers-terminal_titans/actions/workflows/lint.yml)
@@ -125,3 +124,4 @@ pipenv run pytest tests/ -v --cov=.
 ```
 
 The web-app CI workflow gates merges at ≥80% coverage.
+
