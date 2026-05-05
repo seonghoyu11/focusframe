@@ -12,7 +12,7 @@ FocusFrame is a containerized multi-service study-focus application. While a stu
 - [Rehan Gupta](https://github.com/rehanguptaNYU)
 - [Inoo Jung](https://github.com/ij2298-oss)
 - [Caleb Jawharjian](https://github.com/calebjawharjian)
-- [Steve](https://github.com/seonghoyu11)
+- [Steve Yoo](https://github.com/seonghoyu11)
 
 ## Task Board
 
